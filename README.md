@@ -63,6 +63,32 @@ report.md     written analysis (~1200–1500 words)
 ```
 
 ## Status
-Scaffold. `src/degradations.py` and `src/metrics.py` are implemented; all other
-modules are typed stubs with `NotImplementedError` bodies and TODOs. See the
-implementation-order checklist in the original proposal.
+**All modules implemented and unit-tested** (synthetic data; heavy deps —
+torch/transformers/whisper/parselmouth/sentence-transformers — are lazily
+imported so the rest of the framework imports and tests without them).
+
+Core pipeline:
+- `dataset.py` — protocol parser (2021 + 2019 layouts) + stratified subset
+- `degradations.py` — MP3, telephony, noise, streaming (+ numpy mu-law fallback)
+- `model.py` — `SpoofDetector` wrapper for `lab260/AASIST3`
+- `evaluate.py` — full sweep loop with score caching + per-attack breakdown
+- `metrics.py` — EER, min-DCF, AUC, per-attack EER
+- `visualize.py` — ROC / DET / EER-sweep / heatmap / score-hist
+
+Extensions:
+- `transcribe.py` — resumable Whisper → JSONL
+- `nlp_features.py` (Ext 1) — GPT-2 perplexity, repetition rate, ASR confidence + correlation
+- `attack_profiling.py` (Ext 2) — taxonomy, transcript clustering, EER by attack category
+- `reconstruction.py` (Ext 3) — frozen HuBERT + decoder trained on bona fide only
+- `prosody.py` (Ext 4) — F0/timing/energy features, CMU-stress correlation, LR classifier
+
+Not yet executed end-to-end (need the real weights / corpus / GPU): the AASIST3
+model load, decoder training, Whisper/GPT-2 passes. The orchestration around
+them is tested with mocks + synthetic audio.
+
+Note: `model.py` defaults to `lab260/AASIST3` — the proposal's
+`ntt-hilab-gensp/ssl_spoof` returns HTTP 401 (gated/unavailable). AASIST3 loads
+via its own custom code, which must be on the import path.
+
+`data/attack_taxonomy.json` is filled in from the ASVspoof 2019 database paper
+(A01–A19). Only A07–A19 appear in the eval set.

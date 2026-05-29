@@ -34,7 +34,13 @@ data/asvspoof2021_LA/
 
 ## attack_taxonomy.json
 
-`attack_taxonomy.json` maps each attack id to its generative mechanism. The
-entries are **placeholders** — fill them in by reading the ASVspoof 2021 / 2019
-evaluation-plan papers (arXiv:2109.00535, arXiv:2210.02437). This cannot be
-inferred from the audio.
+`attack_taxonomy.json` maps each attack id (A01–A19) to its generative
+mechanism, transcribed from Table 1 / Section 3 of the ASVspoof 2019 database
+paper (arXiv:1911.01601). Categories: `neural_tts`, `concatenative_tts`,
+`voice_conversion`, `hybrid_tts_vc`, with the vocoder kept as a separate
+`waveform_generator` field.
+
+Note: the LA **eval** set (reused by ASVspoof 2021) contains only **A07–A19**;
+A01–A06 are train/dev. The eval category balance is skewed — 6 neural_tts, 3
+voice_conversion, 3 hybrid_tts_vc, but only **1 concatenative** (A16) — so
+per-category EER for concatenative rests on a single system; interpret with care.
