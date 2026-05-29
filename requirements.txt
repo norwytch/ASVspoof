@@ -1,0 +1,28 @@
+# Core
+numpy
+pandas
+scipy
+scikit-learn
+matplotlib
+
+# Audio
+torch
+torchaudio
+librosa
+soundfile
+
+# Models / SSL
+transformers
+openai-whisper
+
+# NLP extensions
+sentence-transformers
+umap-learn
+nltk
+parselmouth          # Praat interface for F0/prosody extraction (pip: praat-parselmouth)
+
+# Notes:
+# - ffmpeg must be installed as a SYSTEM dependency (brew install ffmpeg) for MP3 codec degradation.
+# - audioop (G.711 mu-law) is stdlib but REMOVED in Python 3.13. Use Python <=3.12,
+#   or rely on the numpy mu-law fallback in src/degradations.py.
+# - pip package for parselmouth is `praat-parselmouth`, imported as `parselmouth`.

@@ -1,0 +1,28 @@
+# Data — never commit the corpora
+data/asvspoof2021_LA/
+data/asvspoof5/
+data/musan/
+*.flac
+*.wav
+*.mp3
+
+# Results artifacts (keep dirs via .gitkeep, ignore contents)
+results/figures/*
+!results/figures/.gitkeep
+results/*.csv
+results/*.jsonl
+results/*.pt
+checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+audio_deepfake_robustness_proposal.md
+report.md
+
+# OS
+.DS_Store

@@ -1,0 +1,30 @@
+{
+  "_comment": "ASVspoof attack-id -> generative mechanism. MUST be verified against the ASVspoof 2021 / 2019 evaluation-plan papers (arXiv:2109.00535, arXiv:2210.02437) before use. Categories: neural_tts | voice_conversion | vocoder | concatenative | hybrid. The entries below are PLACEHOLDERS pending that read-through.",
+  "categories": {
+    "neural_tts": {"mechanism": "text -> speech", "expected_artifacts": "prosody, spectral envelope"},
+    "voice_conversion": {"mechanism": "source speaker -> target speaker", "expected_artifacts": "F0 trajectory, speaker embedding"},
+    "vocoder": {"mechanism": "Griffin-Lim / WaveNet / neural vocoder", "expected_artifacts": "phase, high-frequency detail"},
+    "concatenative": {"mechanism": "unit-selection synthesis", "expected_artifacts": "segment boundaries"}
+  },
+  "attacks": {
+    "A01": {"category": "TODO", "system": "TODO"},
+    "A02": {"category": "TODO", "system": "TODO"},
+    "A03": {"category": "TODO", "system": "TODO"},
+    "A04": {"category": "TODO", "system": "TODO"},
+    "A05": {"category": "TODO", "system": "TODO"},
+    "A06": {"category": "TODO", "system": "TODO"},
+    "A07": {"category": "TODO", "system": "TODO"},
+    "A08": {"category": "TODO", "system": "TODO"},
+    "A09": {"category": "TODO", "system": "TODO"},
+    "A10": {"category": "TODO", "system": "TODO"},
+    "A11": {"category": "TODO", "system": "TODO"},
+    "A12": {"category": "TODO", "system": "TODO"},
+    "A13": {"category": "TODO", "system": "TODO"},
+    "A14": {"category": "TODO", "system": "TODO"},
+    "A15": {"category": "TODO", "system": "TODO"},
+    "A16": {"category": "TODO", "system": "TODO"},
+    "A17": {"category": "TODO", "system": "TODO"},
+    "A18": {"category": "TODO", "system": "TODO"},
+    "A19": {"category": "TODO", "system": "TODO"}
+  }
+}
