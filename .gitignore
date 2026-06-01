@@ -6,6 +6,11 @@ data/musan/
 *.wav
 *.mp3
 
+# Vendored baseline code + downloaded model weights (reproducible: git clone +
+# gdown; see src/ssl_aasist.py). Too large / not ours to commit.
+third_party/
+weights/
+
 # Results artifacts (keep dirs via .gitkeep, ignore contents)
 results/figures/*
 !results/figures/.gitkeep

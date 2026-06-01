@@ -1,14 +1,18 @@
 """Baseline spoofing-detector loading and inference wrapper.
 
-Default target: ``lab260/AASIST3`` (wav2vec2 SSL encoder + graph-attention head).
-The proposal's original id ``ntt-hilab-gensp/ssl_spoof`` is gated/unavailable
-(HTTP 401), so it is not used.
+Baseline = **SSL_Anti-spoofing** (wav2vec2 XLS-R 300M front-end + AASIST graph
+back-end; TakHemlata et al., Interspeech 2022). It is loaded fairseq-free via
+``src.ssl_aasist`` (the XLS-R encoder is rebuilt with a HuggingFace
+``Wav2Vec2Model`` and the pretrained checkpoint's wav2vec keys are remapped onto
+HF naming -- see that module). The original proposal id
+``ntt-hilab-gensp/ssl_spoof`` is gated (HTTP 401), and ``lab260/AASIST3`` was
+dropped because every public AASIST3 checkpoint is degenerate (scores all inputs
+bona fide, ~63% EER) even in its own pinned environment.
 
-AASIST3 specifics (from its model card):
-    - input : 16 kHz mono, fixed length 64600 samples (~4 s); pad/truncate
-    - output: 2-way logits where index 0 == bonafide, 1 == spoof
-    - loaded via a custom ``from_pretrained`` (PyTorchModelHubMixin), NOT
-      ``transformers.AutoModel``; its model code must be importable.
+Model specifics:
+    - input : 16 kHz mono, fixed length 64600 samples (~4 s); pad/truncate, raw
+      waveform (NO per-utterance normalisation)
+    - output: 2-way logits where **index 1 == bona fide, index 0 == spoof**
 
 SCORE CONVENTION (matches metrics.py): we return ``logit[bonafide] - logit[spoof]``
 so that HIGHER == MORE BONA FIDE.
@@ -21,10 +25,10 @@ from __future__ import annotations
 
 import numpy as np
 
-DEFAULT_MODEL_ID = "lab260/AASIST3"
+DEFAULT_MODEL_ID = "SSL_Anti-spoofing/LA_model"   # see src.ssl_aasist for paths
 TARGET_SR = 16000
 MAX_SAMPLES = 64600          # ~4.04 s at 16 kHz; AASIST fixed input length
-BONAFIDE_IDX, SPOOF_IDX = 0, 1
+BONAFIDE_IDX, SPOOF_IDX = 1, 0
 
 
 def _to_mono_16k(audio: np.ndarray, sr: int):
@@ -67,26 +71,28 @@ class SpoofDetector:
             self.load()
 
     def load(self) -> "SpoofDetector":
-        """Load and freeze the model.
+        """Load and freeze the SSL_Anti-spoofing (XLS-R + AASIST) baseline.
 
-        AASIST3 ships custom architecture code with a ``from_pretrained``
-        classmethod. We import it lazily so the rest of the framework does not
-        hard-depend on the model package being installed.
+        Assembled fairseq-free by :func:`src.ssl_aasist.build_model`, which
+        rebuilds the XLS-R encoder with a HuggingFace ``Wav2Vec2Model`` and loads
+        the pretrained checkpoint's remapped weights. ``model_id`` may be a path
+        to a ``.pth`` checkpoint; otherwise the packaged default is used.
         """
         if self.model is not None:
             return self
+        from .ssl_aasist import DEFAULT_CKPT, build_model
+
+        ckpt = self.model_id if (self.model_id and str(self.model_id).endswith(".pth")) else DEFAULT_CKPT
         try:
-            from model import aasist3  # provided by the lab260/AASIST3 repo
-            model = aasist3.from_pretrained(self.model_id)
+            model = build_model(ckpt_path=ckpt, device=self.device)
         except Exception as e:  # noqa: BLE001 - surface a precise setup hint
             raise RuntimeError(
-                f"Could not load '{self.model_id}'. AASIST3 needs its custom "
-                "model code on the import path (clone the HF repo or pip-install "
-                "it), e.g. `from model import aasist3`. If you swap in a "
-                "transformers-native checkpoint, override SpoofDetector.load(). "
+                "Could not load the SSL_Anti-spoofing baseline. Ensure the repo is "
+                "cloned to third_party/SSL_Anti-spoofing and the pretrained "
+                "checkpoint is present (see src/ssl_aasist.py). "
                 f"Original error: {e}"
             ) from e
-        self.model = model.to(self.device).eval()
+        self.model = model
         for p in self.model.parameters():
             p.requires_grad_(False)
         return self

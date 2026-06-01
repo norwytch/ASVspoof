@@ -1,3 +1,8 @@
+# PyTorch CUDA 12.8 wheels. The default PyPI `torch` now ships a CUDA 13 build
+# (+cu130) that needs a driver newer than CUDA 12.8; on a 12.8-max driver (e.g.
+# H100 w/ driver 570.x) it falls back to CPU. Pin the cu128 build explicitly.
+--extra-index-url https://download.pytorch.org/whl/cu128
+
 # Core
 numpy
 pandas
@@ -6,10 +11,14 @@ scikit-learn
 matplotlib
 
 # Audio
-torch
-torchaudio
+torch==2.11.0+cu128
+torchaudio==2.11.0+cu128
 librosa
-soundfile
+# soundfile 0.13.x bundles libsndfile 1.2.2, which fails to decode ~50% of the
+# ASVspoof 2021 LA flac files ("flac decoder lost sync"). 0.12.1 (libsndfile
+# 1.2.0) reads them all; this is also the version AASIST3 pins. Do not bump
+# without re-verifying flac decoding on the corpus.
+soundfile==0.12.1
 
 # Models / SSL
 transformers
