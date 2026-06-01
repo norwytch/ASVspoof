@@ -66,9 +66,41 @@ def _degrade(audio: np.ndarray, sr: int, family: str, params: dict) -> np.ndarra
     raise ValueError(f"unknown degradation family {family!r}")
 
 
+def _build_loader(paths, family, params, batch_size, num_workers):
+    """DataLoader yielding (B, MAX_SAMPLES) fp32 waveform batches.
+
+    The per-file load + degrade (incl. the MP3 ffmpeg round-trip) runs inside
+    worker processes, so it overlaps GPU compute instead of blocking it. Order is
+    preserved (shuffle=False), so scores stay aligned with ``paths``/``trials``.
+    """
+    import torch
+    from torch.utils.data import DataLoader, Dataset
+
+    from .model import _fix_length, _to_mono_16k
+
+    class _DegradeDS(Dataset):
+        def __len__(self):
+            return len(paths)
+
+        def __getitem__(self, i):
+            audio, sr = load_audio(paths[i])
+            audio = _degrade(audio, sr, family, params)
+            return _fix_length(_to_mono_16k(audio, sr)).float()
+
+    return DataLoader(_DegradeDS(), batch_size=batch_size, shuffle=False,
+                      num_workers=num_workers, pin_memory=(num_workers > 0))
+
+
 def run_condition(detector: SpoofDetector, trials: pd.DataFrame,
-                  family: str, params: dict, *, cache: bool = True):
+                  family: str, params: dict, *, cache: bool = True,
+                  batch_size: int = 32, num_workers: int = 8, amp: bool = True):
     """Score every trial under one condition. Returns (labels, scores, attack_ids).
+
+    Non-streaming families are scored with a parallel DataLoader + batched
+    (optionally bf16-autocast) forward pass, which keeps the GPU busy and overlaps
+    the ffmpeg/decoding cost. Streaming keeps the per-utterance path because each
+    utterance produces a variable number of chunks (already batched internally by
+    ``predict_streaming``).
 
     Results are cached to results/scores/<slug>.npz; a cached file is reused if
     its utt_ids match the current trial set (so re-running metrics is free and
@@ -83,17 +115,30 @@ def run_condition(detector: SpoofDetector, trials: pd.DataFrame,
         if np.array_equal(z["utt_id"], utt_ids):
             return z["label"], z["score"], z["attack_id"]
 
-    scores = np.empty(len(trials), dtype=np.float32)
-    for i, row in enumerate(tqdm(trials.itertuples(index=False),
-                                 total=len(trials), desc=slug)):
-        audio, sr = load_audio(row.path)
-        if family == "streaming":
+    if family == "streaming":
+        scores = np.empty(len(trials), dtype=np.float32)
+        for i, row in enumerate(tqdm(trials.itertuples(index=False),
+                                     total=len(trials), desc=slug)):
+            audio, sr = load_audio(row.path)
             _, agg = detector.predict_streaming(
                 audio, sr, chunk_ms=params.get("chunk_ms"),
                 overlap_ms=params.get("overlap_ms", 0))
             scores[i] = agg
-        else:
-            scores[i] = detector.predict(_degrade(audio, sr, family, params), sr)
+    else:
+        import torch
+        detector.load()
+        use_amp = amp and str(detector.device).startswith("cuda")
+        loader = _build_loader(trials.path.tolist(), family, params, batch_size, num_workers)
+        out = []
+        for batch in tqdm(loader, total=len(loader), desc=slug):
+            with torch.inference_mode():
+                if use_amp:
+                    with torch.autocast("cuda", dtype=torch.bfloat16):
+                        s = detector._forward(batch)
+                else:
+                    s = detector._forward(batch)
+            out.append(s.float())
+        scores = torch.cat(out).numpy().astype(np.float32)
 
     labels = trials.label.to_numpy()
     attack_ids = trials.attack_id.to_numpy()
@@ -113,7 +158,12 @@ def main():
     p.add_argument("--full", action="store_true", help="Use the entire eval set")
     p.add_argument("--out", default="results/results.csv")
     p.add_argument("--per-attack-out", default="results/per_attack_eer.csv")
+    p.add_argument("--codec-out", default="results/codec_eer.csv")
+    p.add_argument("--batch-size", type=int, default=32, help="batch size for non-streaming scoring")
+    p.add_argument("--num-workers", type=int, default=8, help="DataLoader workers for parallel load+degrade")
+    p.add_argument("--no-amp", action="store_true", help="disable bf16 autocast (use fp32)")
     args = p.parse_args()
+    score_kw = dict(batch_size=args.batch_size, num_workers=args.num_workers, amp=not args.no_amp)
 
     trials = load_trials(args.protocol, args.flac_dir, n=args.subset, full=args.full)
     print(f"Evaluating {len(trials)} trials "
@@ -122,14 +172,38 @@ def main():
     detector = SpoofDetector(args.model_id or DEFAULT_MODEL_ID)
 
     # Clean baseline first — every Δ EER is measured against it.
-    base_labels, base_scores, base_attacks = run_condition(detector, trials, "clean", {})
+    base_labels, base_scores, base_attacks = run_condition(detector, trials, "clean", {}, **score_kw)
     baseline_eer, _ = compute_eer(base_labels, base_scores)
     print(f"Clean baseline EER = {baseline_eer * 100:.2f}%")
 
+    # Native-codec stratified EER on the clean condition. ASVspoof 2021 LA bakes in
+    # real telephony/codec transmission (the `codec` column; label-correlated), so
+    # this is the principled channel-effect analysis — re-applying our own synthetic
+    # `telephony` degradation would double-count it. 'none' = uncompressed reference.
+    codecs = trials["codec"].to_numpy()
+    codec_rows = []
+    for c in sorted(set(map(str, codecs))):
+        m = codecs.astype(str) == c
+        if m.sum() < 2 or len(set(base_labels[m].tolist())) < 2:
+            continue
+        eer_c, _ = compute_eer(base_labels[m], base_scores[m])
+        codec_rows.append({"codec": c, "n": int(m.sum()),
+                           "n_bonafide": int((base_labels[m] == 1).sum()),
+                           "eer_pct": round(eer_c * 100.0, 3)})
+    Path(args.codec_out).parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(codec_rows).to_csv(args.codec_out, index=False)
+    print(f"Native-codec EER (clean) -> {args.codec_out}:")
+    print(pd.DataFrame(codec_rows).to_string(index=False))
+
     rows, per_attack_rows = [], []
     for family, configs in deg.DEGRADATIONS.items():
+        # Synthetic telephony is redundant with LA's native telephony codec layer
+        # (see --codec-out breakdown); functions are kept in degradations.py and can
+        # be re-enabled by removing this skip.
+        if family == "telephony":
+            continue
         for params in configs:
-            labels, scores, attacks = run_condition(detector, trials, family, params)
+            labels, scores, attacks = run_condition(detector, trials, family, params, **score_kw)
             row = {"condition": family, "param": _slug(family, params).replace(f"{family}_", "") if params else "—"}
             row.update(summarize(labels, scores, baseline_eer=baseline_eer))
             rows.append(row)
