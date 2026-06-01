@@ -97,3 +97,71 @@ def summarize(labels: np.ndarray, scores: np.ndarray,
     if baseline_eer is not None:
         row["delta_eer_pct"] = (eer - baseline_eer) * 100.0
     return row
+
+
+# --------------------------------------------------------------------------- #
+# Part 2 — statistical rigor (research-design.md §5)
+# --------------------------------------------------------------------------- #
+def bootstrap_eer_ci(labels: np.ndarray, scores: np.ndarray, *,
+                     n_boot: int = 1000, alpha: float = 0.05,
+                     seed: int = 0) -> dict[str, float]:
+    """Utterance-level bootstrap CI for EER (Bisani & Ney 2004).
+
+    Resamples trials with replacement; returns point EER plus the (alpha/2,
+    1-alpha/2) percentile interval. This is the eval-set *sampling* CI — distinct
+    from the seed-variance reported by retraining the head.
+    """
+    labels = np.asarray(labels)
+    scores = np.asarray(scores)
+    rng = np.random.default_rng(seed)
+    n = len(labels)
+    point, _ = compute_eer(labels, scores)
+    boots = np.empty(n_boot)
+    for i in range(n_boot):
+        idx = rng.integers(0, n, n)
+        # guard against a resample with only one class
+        if labels[idx].min() == labels[idx].max():
+            boots[i] = np.nan
+            continue
+        boots[i], _ = compute_eer(labels[idx], scores[idx])
+    boots = boots[~np.isnan(boots)]
+    lo, hi = np.percentile(boots, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return {"eer": float(point), "ci_low": float(lo), "ci_high": float(hi),
+            "eer_pct": float(point * 100), "ci_low_pct": float(lo * 100),
+            "ci_high_pct": float(hi * 100)}
+
+
+def seed_variance(eers: list[float] | np.ndarray) -> dict[str, float]:
+    """Mean ± std (and range) of EER across retraining seeds (§5)."""
+    a = np.asarray(eers, dtype=float)
+    return {"mean_eer_pct": float(a.mean() * 100), "std_eer_pct": float(a.std(ddof=1) * 100),
+            "min_eer_pct": float(a.min() * 100), "max_eer_pct": float(a.max() * 100),
+            "n_seeds": int(a.size)}
+
+
+def spearman_with_ci(x: np.ndarray, y: np.ndarray, *, n_boot: int = 2000,
+                     alpha: float = 0.05, seed: int = 0) -> dict[str, float]:
+    """Spearman rank correlation with a bootstrap CI — the core H1 test (§3.5).
+
+    n is small (≈4 families / ≈13 systems), so the rank statistic and a
+    bootstrap CI are reported instead of a single point estimate; the directional
+    prediction should be pre-registered.
+    """
+    from scipy.stats import spearmanr
+
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    rho, pval = spearmanr(x, y)
+    rng = np.random.default_rng(seed)
+    n = len(x)
+    boots = np.empty(n_boot)
+    for i in range(n_boot):
+        idx = rng.integers(0, n, n)
+        if np.std(x[idx]) == 0 or np.std(y[idx]) == 0:
+            boots[i] = np.nan
+            continue
+        boots[i] = spearmanr(x[idx], y[idx]).correlation
+    boots = boots[~np.isnan(boots)]
+    lo, hi = np.percentile(boots, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return {"rho": float(rho), "pval": float(pval),
+            "ci_low": float(lo), "ci_high": float(hi), "n": int(n)}

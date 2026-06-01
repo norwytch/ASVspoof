@@ -175,3 +175,78 @@ DEGRADATIONS = {
         {"chunk_ms": 500, "overlap_ms": 0},
     ],
 }
+
+
+# --------------------------------------------------------------------------- #
+# Part 2 — shortcut ablations (research-design.md §3.3)
+# --------------------------------------------------------------------------- #
+def trim_silence(audio: np.ndarray, sr: int, top_db: float = 30.0) -> np.ndarray:
+    """Trim leading/trailing silence (the canonical anti-spoofing shortcut).
+
+    Apply identically at train and test. See Müller 2021, Chettri 2020.
+    """
+    trimmed, _ = librosa.effects.trim(audio, top_db=top_db)
+    return trimmed.astype(np.float32) if len(trimmed) else audio
+
+
+def silence_duration_features(audio: np.ndarray, sr: int, top_db: float = 30.0) -> dict:
+    """Leading/trailing silence durations + speech ratio — features for the
+    'silence-only ceiling' classifier that demonstrates the shortcut exists.
+    """
+    intervals = librosa.effects.split(audio, top_db=top_db)
+    total = len(audio) / sr
+    if len(intervals) == 0:
+        return {"lead_sil_s": total, "trail_sil_s": 0.0, "speech_ratio": 0.0,
+                "total_s": total}
+    lead = intervals[0][0] / sr
+    trail = (len(audio) - intervals[-1][1]) / sr
+    speech = sum(b - a for a, b in intervals) / sr
+    return {"lead_sil_s": lead, "trail_sil_s": trail,
+            "speech_ratio": speech / total if total else 0.0, "total_s": total}
+
+
+def equalize_energy(audio: np.ndarray, sr: int | None = None,
+                    target_rms: float = 0.05) -> np.ndarray:
+    """Scale to a fixed RMS so loudness cannot be a discriminative cue."""
+    rms = float(np.sqrt(np.mean(audio ** 2))) + 1e-12
+    return (audio * (target_rms / rms)).astype(np.float32)
+
+
+def fix_duration(audio: np.ndarray, sr: int, seconds: float = 4.0) -> np.ndarray:
+    """Pad/truncate to a fixed duration so utterance length cannot leak the label."""
+    n = int(sr * seconds)
+    if len(audio) < n:
+        return np.pad(audio, (0, n - len(audio))).astype(np.float32)
+    return audio[:n].astype(np.float32)
+
+
+# --------------------------------------------------------------------------- #
+# Part 2 — band-mask intervention (research-design.md §3.6)
+# --------------------------------------------------------------------------- #
+def apply_band_mask(audio: np.ndarray, sr: int, low_hz: float, high_hz: float,
+                    nperseg: int = 512) -> np.ndarray:
+    """Zero out an STFT frequency band, then resynthesize.
+
+    The causal handle: a *targeted* high-frequency vocoder-artifact band vs. a
+    *bandwidth-matched control* band. If masking the targeted band improves LOAO
+    generalization more than the matched control, the effect is artifact-specific
+    rather than generic regularization.
+    """
+    from scipy.signal import istft, stft
+
+    f, _, Z = stft(audio, fs=sr, nperseg=nperseg)
+    Z[(f >= low_hz) & (f <= high_hz), :] = 0
+    _, x = istft(Z, fs=sr, nperseg=nperseg)
+    return x[:len(audio)].astype(np.float32)
+
+
+def matched_control_band(low_hz: float, high_hz: float, sr: int,
+                         placement: str = "low") -> tuple[float, float]:
+    """A bandwidth-matched control band for ``apply_band_mask`` (same width,
+    different location). 'low' places it just above DC; 'mid' centers it."""
+    width = high_hz - low_hz
+    if placement == "low":
+        return (50.0, 50.0 + width)
+    nyq = sr / 2
+    center = nyq / 2
+    return (center - width / 2, center + width / 2)

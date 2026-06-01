@@ -138,3 +138,44 @@ def load_trials(protocol_path: str | Path, flac_dir: str | Path, *,
         parse_protocol(protocol_path, flac_dir, phase=phase),
         n=n, full=full, seed=seed,
     )
+
+
+def attach_family(trials: pd.DataFrame, taxonomy: dict) -> pd.DataFrame:
+    """Add a 'family' column mapping attack_id -> generative-mechanism category.
+
+    Bona fide rows ('-') map to 'bonafide'. Uses the same taxonomy as
+    attack_profiling so Part 1 and Part 2 share one grouping.
+    """
+    from .attack_profiling import category_of
+
+    out = trials.copy()
+    out["family"] = out["attack_id"].map(lambda a: category_of(a, taxonomy))
+    return out
+
+
+def leave_one_attack_out(trials: pd.DataFrame, taxonomy: dict, *,
+                         seed: int = 42, bonafide_test_frac: float = 0.3):
+    """Yield ``(held_family, train_df, test_df)`` for each spoof family (Part 2 §3.2).
+
+    For each spoof family *f*: train = (bona-fide train split) + all spoof
+    families EXCEPT *f*; test = (bona-fide test split) + family *f*. The bona-fide
+    pool is split once into disjoint train/test halves (deterministic by seed) so
+    the held-out evaluation has no bona-fide leakage.
+    """
+    df = attach_family(trials, taxonomy)
+    rng = np.random.default_rng(seed)
+
+    bona = df[df.label == 1]
+    n_test = int(round(len(bona) * bonafide_test_frac))
+    test_idx = set(rng.choice(bona.index.to_numpy(), size=n_test, replace=False).tolist())
+    bona_test = bona.loc[bona.index.isin(test_idx)]
+    bona_train = bona.loc[~bona.index.isin(test_idx)]
+
+    spoof = df[df.label == 0]
+    families = sorted(f for f in spoof.family.unique() if f != "bonafide")
+    for f in families:
+        spoof_train = spoof[spoof.family != f]
+        spoof_test = spoof[spoof.family == f]
+        train = pd.concat([bona_train, spoof_train]).reset_index(drop=True)
+        test = pd.concat([bona_test, spoof_test]).reset_index(drop=True)
+        yield f, train, test
