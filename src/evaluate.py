@@ -66,29 +66,26 @@ def _degrade(audio: np.ndarray, sr: int, family: str, params: dict) -> np.ndarra
     raise ValueError(f"unknown degradation family {family!r}")
 
 
-def _build_loader(paths, family, params, batch_size, num_workers):
-    """DataLoader yielding (B, MAX_SAMPLES) fp32 waveform batches.
+def _chunks_for(path, family, params):
+    """Return this utterance's model-ready chunk(s) as a (n, MAX_SAMPLES) tensor.
 
-    The per-file load + degrade (incl. the MP3 ffmpeg round-trip) runs inside
-    worker processes, so it overlaps GPU compute instead of blocking it. Order is
-    preserved (shuffle=False), so scores stay aligned with ``paths``/``trials``.
+    Non-streaming families degrade the waveform and yield a single chunk.
+    Streaming yields the windowed pieces (``chunk_ms=None`` => the whole utterance,
+    i.e. one chunk). Every chunk is mono/16k and padded/truncated to MAX_SAMPLES.
     """
-    import torch
-    from torch.utils.data import DataLoader, Dataset
-
+    from .degradations import chunk_audio
     from .model import _fix_length, _to_mono_16k
 
-    class _DegradeDS(Dataset):
-        def __len__(self):
-            return len(paths)
-
-        def __getitem__(self, i):
-            audio, sr = load_audio(paths[i])
-            audio = _degrade(audio, sr, family, params)
-            return _fix_length(_to_mono_16k(audio, sr)).float()
-
-    return DataLoader(_DegradeDS(), batch_size=batch_size, shuffle=False,
-                      num_workers=num_workers, pin_memory=(num_workers > 0))
+    audio, sr = load_audio(path)
+    if family == "streaming":
+        chunk_ms = params.get("chunk_ms")
+        pieces = ([audio] if chunk_ms is None
+                  else chunk_audio(audio, sr, chunk_ms=chunk_ms,
+                                   overlap_ms=params.get("overlap_ms", 0)))
+    else:
+        pieces = [_degrade(audio, sr, family, params)]
+    import torch
+    return torch.stack([_fix_length(_to_mono_16k(p, sr)) for p in pieces]).float()
 
 
 def run_condition(detector: SpoofDetector, trials: pd.DataFrame,
@@ -96,11 +93,12 @@ def run_condition(detector: SpoofDetector, trials: pd.DataFrame,
                   batch_size: int = 32, num_workers: int = 8, amp: bool = True):
     """Score every trial under one condition. Returns (labels, scores, attack_ids).
 
-    Non-streaming families are scored with a parallel DataLoader + batched
-    (optionally bf16-autocast) forward pass, which keeps the GPU busy and overlaps
-    the ffmpeg/decoding cost. Streaming keeps the per-utterance path because each
-    utterance produces a variable number of chunks (already batched internally by
-    ``predict_streaming``).
+    Unified batched path for every family: a parallel DataLoader does the per-file
+    load + degrade/chunk in worker processes (overlapping the ffmpeg/decoding cost),
+    each utterance's chunk(s) are concatenated across the batch and scored in one
+    (optionally bf16-autocast) forward pass, then aggregated per utterance (mean over
+    chunks; a no-op for the single-chunk non-streaming families). Order is preserved
+    (shuffle=False), so scores stay aligned with ``trials``.
 
     Results are cached to results/scores/<slug>.npz; a cached file is reused if
     its utt_ids match the current trial set (so re-running metrics is free and
@@ -115,30 +113,39 @@ def run_condition(detector: SpoofDetector, trials: pd.DataFrame,
         if np.array_equal(z["utt_id"], utt_ids):
             return z["label"], z["score"], z["attack_id"]
 
-    if family == "streaming":
-        scores = np.empty(len(trials), dtype=np.float32)
-        for i, row in enumerate(tqdm(trials.itertuples(index=False),
-                                     total=len(trials), desc=slug)):
-            audio, sr = load_audio(row.path)
-            _, agg = detector.predict_streaming(
-                audio, sr, chunk_ms=params.get("chunk_ms"),
-                overlap_ms=params.get("overlap_ms", 0))
-            scores[i] = agg
-    else:
-        import torch
-        detector.load()
-        use_amp = amp and str(detector.device).startswith("cuda")
-        loader = _build_loader(trials.path.tolist(), family, params, batch_size, num_workers)
-        out = []
-        for batch in tqdm(loader, total=len(loader), desc=slug):
-            with torch.inference_mode():
-                if use_amp:
-                    with torch.autocast("cuda", dtype=torch.bfloat16):
-                        s = detector._forward(batch)
-                else:
-                    s = detector._forward(batch)
-            out.append(s.float())
-        scores = torch.cat(out).numpy().astype(np.float32)
+    import torch
+    from torch.utils.data import DataLoader, Dataset
+
+    paths = trials.path.tolist()
+
+    class _ChunkDS(Dataset):
+        def __len__(self):
+            return len(paths)
+
+        def __getitem__(self, i):
+            return _chunks_for(paths[i], family, params)
+
+    def _collate(items):  # items: list of (n_i, MAX) -> concatenated chunks + counts
+        return torch.cat(items, 0), [it.shape[0] for it in items]
+
+    detector.load()
+    use_amp = amp and str(detector.device).startswith("cuda")
+    loader = DataLoader(_ChunkDS(), batch_size=batch_size, shuffle=False,
+                        num_workers=num_workers, collate_fn=_collate)
+    out = []
+    for chunk_batch, counts in tqdm(loader, total=len(loader), desc=slug):
+        with torch.inference_mode():
+            if use_amp:
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    cs = detector._forward(chunk_batch)
+            else:
+                cs = detector._forward(chunk_batch)
+        cs = cs.float()
+        j = 0
+        for n in counts:                       # aggregate chunks -> one score per utt
+            out.append(float(cs[j:j + n].mean()))
+            j += n
+    scores = np.asarray(out, dtype=np.float32)
 
     labels = trials.label.to_numpy()
     attack_ids = trials.attack_id.to_numpy()

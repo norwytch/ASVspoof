@@ -3,10 +3,14 @@
 Reads results/scores/*.npz + results/per_attack_eer.csv and writes PNGs to
 results/figures/. Re-runnable; depends only on the cached sweep outputs.
 """
+import sys
+
 import pandas as pd
 
 from src import visualize as viz
 from src.metrics import compute_eer
+
+PER_ATTACK_CSV = sys.argv[1] if len(sys.argv) > 1 else "results/per_attack_eer.csv"
 
 FIG = viz.FIGDIR
 saved = []
@@ -48,7 +52,7 @@ saved.append(viz.plot_eer_sweep(
     "streaming chunk size (ms)", FIG / "eer_vs_streaming.png", baseline_eer=clean_eer))
 
 # 6. Per-attack EER heatmap over all conditions.
-pa = pd.read_csv("results/per_attack_eer.csv")
+pa = pd.read_csv(PER_ATTACK_CSV)
 saved.append(viz.plot_attack_heatmap(pa, FIG / "per_attack_heatmap.png"))
 
 # 7. Clean score-separation histogram (bona fide vs spoof).
