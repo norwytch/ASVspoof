@@ -19,7 +19,7 @@ openai-whisper
 sentence-transformers
 umap-learn
 nltk
-parselmouth          # Praat interface for F0/prosody extraction (pip: praat-parselmouth)
+praat-parselmouth    # Praat interface for F0/prosody extraction (imported as `parselmouth`)
 
 # Notes:
 # - ffmpeg must be installed as a SYSTEM dependency (brew install ffmpeg) for MP3 codec degradation.
