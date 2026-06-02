@@ -13,7 +13,7 @@ representationally *why* it fails to generalize (Part 2).
 - **Clean baseline (full 165,102-trial eval): EER 9.73%, AUC 0.967.**
 - **Noise, not compression, is the deployment failure axis.** MP3 is essentially
   free (even mildly *helpful* down to 32 kbps); additive noise drives EER from
-  9.7% → **25.7% at 0 dB**. Streaming needs **≥4 s of context** (EER doubles by 2 s).
+  9.7% → **25.7% at 0 dB**. Streaming needs **≥4 s of context** (EER rises to 12.5% by 2 s).
 - **A10 (Tacotron2 + WaveRNN) is the standing blind spot:** 27.5% EER even on the
   clean set while most attacks sit near 1–5%.
 - **Generalization (Part 2):** detectors fail to transfer to specific *unseen*
@@ -108,7 +108,8 @@ Across the 13 attacks (layer 9):
 
 Every bona-proximity measure points the same way; **isolation among spoofs does
 nothing**, exactly as the boundary account predicts. **A19 is the exemplar:** its
-centroid sits ~10× closer to bona fide than any other generator, and a k-NN that
+centroid sits ~3.5× closer to bona fide than the next-closest generator (~14× the
+typical one), and a k-NN that
 never saw it labels **51% of its samples bona fide**.
 
 ![Bona-fide proximity predicts non-transfer](results/figures/geometry_gap_scatter.png)

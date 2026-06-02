@@ -51,7 +51,7 @@ Full write-up with figures in **[report.md](report.md)**.
 - **Clean baseline (full 165k-trial eval): EER 9.73%, AUC 0.967.**
 - **Noise — not compression — is the failure axis.** MP3 is ~free (EER *drops* to
   8.5% at 32 kbps); additive noise pushes EER to **25.7% at 0 dB**. Streaming needs
-  **≥4 s of context** (EER doubles by 2 s). Native-codec effect is modest (PSTN worst, 8.2%).
+  **≥4 s of context** (EER rises to 12.5% by 2 s). Native-codec effect is modest (PSTN worst, 8.2%).
 - **A10 (Tacotron2+WaveRNN) is the standing blind spot:** 27.5% EER even on clean
   audio, while A09/A13 sit near 0.5%.
 - **Generalization: H1 falsified, H2 supported.** Generator identity is linearly
@@ -73,16 +73,24 @@ brew install ffmpeg            # system dependency for MP3 codec
 
 ## Reproduce
 ```bash
-# Clean baseline + full degradation sweep on a stratified 5k subset
+python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+
+# Part 1 — full degradation sweep on the eval set (+ figures)
 python -m src.evaluate --protocol data/asvspoof2021_LA/keys/CM/trial_metadata.txt \
-                       --flac-dir data/asvspoof2021_LA/flac --subset 5000
+                       --flac-dir data/asvspoof2021_LA/flac --full
+python scripts/make_figures.py results/per_attack_eer_full.csv
 
-# Headline clean baseline on the entire eval set
-python -m src.evaluate --protocol ... --flac-dir ... --full
+# Part 2 — cache frozen XLS-R embeddings once, then the generalization study
+python -m scripts.cache_embeddings --subset 8000
+python -m scripts.loao_per_attack --emb-dir results/embeddings --out results/loao_per_attack.csv
+python -m scripts.layer_sweep_selectivity              # H1 (identity-selectivity ceiling)
+python -m scripts.geometry_h2                          # H2 (boundary geometry)
+python -m scripts.cache_embeddings_ft --subset 8000    # Regime B (fine-tuned encoder)
+python -m scripts.compare_regimes
+python -m scripts.make_part2_figures
 
-# Extensions (run after the main sweep)
-python -m src.transcribe        # Whisper -> results/transcripts.jsonl (slow, resumable)
-# ... then attack_profiling / reconstruction / prosody analyses
+# Extensions (implemented + unit-tested, not yet run at scale):
+#   src/{transcribe,nlp_features,attack_profiling,reconstruction,prosody}.py
 ```
 
 ## Results & Discussion
