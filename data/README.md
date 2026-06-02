@@ -2,6 +2,10 @@
 
 The corpora are **not** committed (see `.gitignore`). Download them here.
 
+> **Derived artifacts** (XLS-R embeddings cache, SSL_Anti-spoofing weights) live on
+> Hugging Face, not in git — see [Artifacts](../README.md#artifacts-hugging-face)
+> in the top-level README for the repos and download commands.
+
 ## ASVspoof 2021 LA (primary)
 
 - Challenge page: https://www.asvspoof.org/index2021.html
@@ -12,7 +16,7 @@ Expected layout after download:
 
 ```
 data/asvspoof2021_LA/
-├── flac/                         # eval .flac files (~181k utterances, ~25GB+)
+├── flac/                         # eval .flac files (~181k files / 165k scored trials, ~7.8 GB)
 └── keys/
     └── CM/trial_metadata.txt     # space-delimited; gives label + attack_id per utt
 ```
