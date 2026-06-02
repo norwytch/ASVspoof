@@ -44,13 +44,26 @@ def _to_mono_16k(audio: np.ndarray, sr: int):
     return x
 
 
-def _fix_length(x, length: int = MAX_SAMPLES):
-    """Pad with zeros or truncate to exactly ``length`` samples."""
+def _fix_length(x, length: int = MAX_SAMPLES, mode: str = "repeat"):
+    """Truncate, or pad short waveforms to exactly ``length`` samples.
+
+    ``mode="repeat"`` (default) **tiles** the waveform, matching the original
+    SSL_Anti-spoofing / AASIST ``data_utils.pad`` recipe the checkpoint was trained
+    on. ``mode="zero"`` appends silence — convenient but a TRAIN/TEST MISMATCH for
+    this model (a long silence tail it never saw), which inflates EER; kept only
+    for ablation. Use "repeat" for any real evaluation.
+    """
     import torch
 
-    if x.numel() < length:
-        x = torch.nn.functional.pad(x, (0, length - x.numel()))
-    return x[:length]
+    n = x.numel()
+    if n >= length:
+        return x[:length]
+    if mode == "repeat":
+        reps = length // n + 1
+        return x.repeat(reps)[:length]
+    if mode == "zero":
+        return torch.nn.functional.pad(x, (0, length - n))
+    raise ValueError(f"unknown pad mode {mode!r} (use 'repeat' or 'zero')")
 
 
 class SpoofDetector:
@@ -61,11 +74,12 @@ class SpoofDetector:
     """
 
     def __init__(self, model_id: str = DEFAULT_MODEL_ID, device: str | None = None,
-                 lazy: bool = False):
+                 lazy: bool = False, pad_mode: str = "repeat"):
         import torch
 
         self.model_id = model_id
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.pad_mode = pad_mode      # "repeat" matches the checkpoint's training recipe
         self.model = None
         if not lazy:
             self.load()
@@ -115,7 +129,7 @@ class SpoofDetector:
     # -- public API --------------------------------------------------------- #
     def predict(self, audio: np.ndarray, sr: int) -> float:
         """Bona-fide score for a single full utterance."""
-        x = _fix_length(_to_mono_16k(audio, sr)).unsqueeze(0)
+        x = _fix_length(_to_mono_16k(audio, sr), mode=self.pad_mode).unsqueeze(0)
         return float(self._forward(x)[0])
 
     def predict_batch(self, audios: list[np.ndarray], sr: int,
@@ -126,7 +140,7 @@ class SpoofDetector:
         out: list[float] = []
         for i in range(0, len(audios), batch_size):
             chunk = audios[i:i + batch_size]
-            batch = torch.stack([_fix_length(_to_mono_16k(a, sr)) for a in chunk])
+            batch = torch.stack([_fix_length(_to_mono_16k(a, sr), mode=self.pad_mode) for a in chunk])
             out.extend(self._forward(batch).tolist())
         return np.asarray(out, dtype=np.float32)
 
