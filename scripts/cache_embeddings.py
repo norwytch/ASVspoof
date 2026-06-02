@@ -14,11 +14,13 @@ p.add_argument("--flac-dir", default="data/asvspoof2021_LA/flac")
 p.add_argument("--subset", type=int, default=8000)
 p.add_argument("--out-dir", default="results/embeddings")
 p.add_argument("--model-id", default=None, help="encoder id/path; default = off-the-shelf XLS-R")
+p.add_argument("--pool", default="mean", choices=["mean", "meanstd"],
+               help="time pooling: mean (1024-d) or meanstd (2048-d, adds temporal variability)")
 args = p.parse_args()
 
 trials = load_trials(args.protocol, args.flac_dir, n=args.subset)
-print(f"caching XLS-R embeddings for {len(trials)} trials "
+print(f"caching XLS-R embeddings ({args.pool}) for {len(trials)} trials "
       f"({int((trials.label==1).sum())} bona fide / {int((trials.label==0).sum())} spoof)")
 kw = {} if args.model_id is None else {"model_id": args.model_id}
-cache_embeddings(trials, out_dir=args.out_dir, **kw)
+cache_embeddings(trials, out_dir=args.out_dir, pool=args.pool, **kw)
 print("done ->", args.out_dir)

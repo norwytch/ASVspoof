@@ -36,11 +36,20 @@ def load_xlsr_encoder(model_id: str = DEFAULT_ENCODER, device: str | None = None
 
 
 def extract_layer_embeddings(encoder, audio: np.ndarray, sr: int,
-                             layers: list[int] | None = None) -> dict[int, np.ndarray]:
-    """Mean-pooled hidden state per requested layer. Returns {layer: (D,) float32}.
+                             layers: list[int] | None = None,
+                             pool: str = "mean") -> dict[int, np.ndarray]:
+    """Time-pooled hidden state per requested layer. Returns {layer: (D,) float32}.
 
     layer 0 = CNN feature projection output; 1..N = transformer layers. ``layers
     =None`` returns all hidden states.
+
+    ``pool``:
+      - "mean"    : mean over time -> D = 1024 (default; the original Regime A/B).
+      - "meanstd" : concat(mean, std) over time -> D = 2048. The std channel
+        captures *temporal variability* (the embedding-space analogue of the
+        "TTS is too smooth over time" prosody hypothesis). Parameter-free, so it
+        preserves the weakest-sufficient-probe argument; downstream LOAO/geometry
+        code is dimension-agnostic and needs no change.
     """
     import torch
     import torchaudio
@@ -54,13 +63,22 @@ def extract_layer_embeddings(encoder, audio: np.ndarray, sr: int,
     with torch.inference_mode():
         hs = encoder(x.unsqueeze(0).to(device), output_hidden_states=True).hidden_states
     sel = range(len(hs)) if layers is None else layers
-    return {L: hs[L][0].mean(dim=0).cpu().numpy().astype(np.float32) for L in sel}
+
+    def _pool(h):  # h: (T, D)
+        if pool == "mean":
+            return h.mean(dim=0)
+        if pool == "meanstd":
+            return torch.cat([h.mean(dim=0), h.std(dim=0, unbiased=False)], dim=-1)
+        raise ValueError(f"unknown pool {pool!r} (use 'mean' or 'meanstd')")
+
+    return {L: _pool(hs[L][0]).cpu().numpy().astype(np.float32) for L in sel}
 
 
 def cache_embeddings(trials, *, model_id: str = DEFAULT_ENCODER,
                      layers: list[int] | None = None,
                      out_dir: str | Path = "results/embeddings",
-                     device: str | None = None, encoder=None) -> Path:
+                     device: str | None = None, encoder=None,
+                     pool: str = "mean") -> Path:
     """Extract + cache per-layer embeddings for every trial.
 
     Writes ``<out_dir>/layer_<L>.npy`` (an (N, D) matrix aligned to ``utt_ids.npy``)
@@ -70,6 +88,10 @@ def cache_embeddings(trials, *, model_id: str = DEFAULT_ENCODER,
     ``encoder`` may be a pre-built frozen Wav2Vec2-style module (e.g. the
     fine-tuned XLS-R from ``ssl_aasist.load_finetuned_encoder`` for Regime B); if
     given, ``model_id`` is ignored.
+
+    ``pool`` is forwarded to ``extract_layer_embeddings`` ("mean" or "meanstd").
+    Use a distinct ``out_dir`` per pool (e.g. results/embeddings_meanstd) so the
+    caches don't collide.
     """
     import soundfile as sf
 
@@ -87,7 +109,7 @@ def cache_embeddings(trials, *, model_id: str = DEFAULT_ENCODER,
         audio, sr = sf.read(row.path, dtype="float32")
         if audio.ndim > 1:
             audio = audio.mean(axis=1)
-        feats = extract_layer_embeddings(encoder, audio, sr, layers)
+        feats = extract_layer_embeddings(encoder, audio, sr, layers, pool=pool)
         for L, v in feats.items():
             acc.setdefault(L, []).append(v)
         if i % 500 == 0 or i == n_total:
@@ -97,6 +119,69 @@ def cache_embeddings(trials, *, model_id: str = DEFAULT_ENCODER,
 
     for L, vecs in acc.items():
         np.save(out_dir / f"layer_{L}.npy", np.stack(vecs))
+    np.save(out_dir / "utt_ids.npy", trials.utt_id.to_numpy())
+    trials[["utt_id", "label", "attack_id"]].to_csv(out_dir / "meta.csv", index=False)
+    return out_dir
+
+
+def cache_aasist_embeddings(trials, *, ckpt: str | Path | None = None,
+                            out_dir: str | Path = "results/embeddings_aasist",
+                            device: str | None = None) -> Path:
+    """Option 4: cache the detector's OWN penultimate (pre-logit) embedding.
+
+    Unlike the XLS-R caches (a general-purpose frozen front-end, mean-pooled),
+    this is AASIST's time-aware utterance embedding — the representation the
+    *deployed* detector actually decides on. Captured via a forward hook on the
+    2-class output Linear (its input is the penultimate vector; AASIST has already
+    pooled over time via its graph readout, so it is one (D,) vector per utt).
+
+    Saved in the SAME layout as ``cache_embeddings`` (``layer_0.npy`` + ``meta.csv``
+    + ``utt_ids.npy``) so the Part 2 scripts run unchanged with
+    ``--emb-dir <out_dir> --layer 0``.
+
+    NOTE (verify on the box): the hook targets the first ``nn.Linear`` with
+    ``out_features == 2``; confirm that is AASIST's ``out_layer`` and that the
+    captured tensor is ``(B, D)``.
+    """
+    import time
+
+    import soundfile as sf
+    import torch
+    import torch.nn as nn
+
+    from .model import _fix_length, _to_mono_16k
+    from .ssl_aasist import DEFAULT_CKPT, build_model
+
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    model = build_model(ckpt_path=ckpt or DEFAULT_CKPT, device=device)
+
+    head = next((m for m in model.modules()
+                 if isinstance(m, nn.Linear) and m.out_features == 2), None)
+    if head is None:
+        raise RuntimeError("no 2-class Linear found to hook — check the AASIST head")
+    captured: dict[str, "torch.Tensor"] = {}
+    handle = head.register_forward_hook(lambda mod, inp, out: captured.__setitem__("emb", inp[0].detach()))
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    vecs, n_total, t0 = [], len(trials), time.time()
+    try:
+        with torch.inference_mode():
+            for i, row in enumerate(trials.itertuples(index=False), 1):
+                audio, sr = sf.read(row.path, dtype="float32")
+                if audio.ndim > 1:
+                    audio = audio.mean(axis=1)
+                x = _fix_length(_to_mono_16k(audio, sr)).unsqueeze(0).to(device)
+                model(x)
+                vecs.append(captured["emb"][0].float().cpu().numpy().astype(np.float32))
+                if i % 500 == 0 or i == n_total:
+                    rate = i / (time.time() - t0)
+                    print(f"  [{i}/{n_total}] {rate:.0f} utt/s, "
+                          f"eta {(n_total - i) / rate / 60:.1f} min", flush=True)
+    finally:
+        handle.remove()
+
+    np.save(out_dir / "layer_0.npy", np.stack(vecs))
     np.save(out_dir / "utt_ids.npy", trials.utt_id.to_numpy())
     trials[["utt_id", "label", "attack_id"]].to_csv(out_dir / "meta.csv", index=False)
     return out_dir
