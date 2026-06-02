@@ -1,4 +1,4 @@
-# ASVSpoof2021 Degradation Testing and Probing
+# ASVSpoof2021 Stress-Testing with Degraded Channels and Unseen Generators
 
 A production audio-deepfake detector has to survive two things its training set
 never showed it: **degraded channels** and **unseen attacks**. This repo studies
