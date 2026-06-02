@@ -60,27 +60,40 @@ def extract_layer_embeddings(encoder, audio: np.ndarray, sr: int,
 def cache_embeddings(trials, *, model_id: str = DEFAULT_ENCODER,
                      layers: list[int] | None = None,
                      out_dir: str | Path = "results/embeddings",
-                     device: str | None = None) -> Path:
+                     device: str | None = None, encoder=None) -> Path:
     """Extract + cache per-layer embeddings for every trial.
 
     Writes ``<out_dir>/layer_<L>.npy`` (an (N, D) matrix aligned to ``utt_ids.npy``)
     plus ``meta.csv`` (utt_id, label, attack_id). Resumable-friendly: skip if the
     matrices already exist and match the trial count.
+
+    ``encoder`` may be a pre-built frozen Wav2Vec2-style module (e.g. the
+    fine-tuned XLS-R from ``ssl_aasist.load_finetuned_encoder`` for Regime B); if
+    given, ``model_id`` is ignored.
     """
     import soundfile as sf
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    encoder = load_xlsr_encoder(model_id, device)
+    if encoder is None:
+        encoder = load_xlsr_encoder(model_id, device)
 
+    import time
+
+    n_total = len(trials)
     acc: dict[int, list[np.ndarray]] = {}
-    for row in trials.itertuples(index=False):
+    t0 = time.time()
+    for i, row in enumerate(trials.itertuples(index=False), 1):
         audio, sr = sf.read(row.path, dtype="float32")
         if audio.ndim > 1:
             audio = audio.mean(axis=1)
         feats = extract_layer_embeddings(encoder, audio, sr, layers)
         for L, v in feats.items():
             acc.setdefault(L, []).append(v)
+        if i % 500 == 0 or i == n_total:
+            rate = i / (time.time() - t0)
+            print(f"  [{i}/{n_total}] {rate:.0f} utt/s, "
+                  f"eta {(n_total - i) / rate / 60:.1f} min", flush=True)
 
     for L, vecs in acc.items():
         np.save(out_dir / f"layer_{L}.npy", np.stack(vecs))

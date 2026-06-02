@@ -135,3 +135,22 @@ def build_model(ckpt_path: str | Path = DEFAULT_CKPT, device: str = "cpu"):
             f"Unexpected checkpoint mismatch: {len(missing)} missing, "
             f"{len(unexpected)} unexpected keys. The fairseq->HF remap may be stale.")
     return net.to(device).eval()
+
+
+def load_finetuned_encoder(ckpt_path: str | Path = DEFAULT_CKPT, device: str | None = None):
+    """Return just the fine-tuned XLS-R front-end (Regime B), frozen + eval.
+
+    Mirrors ``embeddings.load_xlsr_encoder`` (stashes ``_wfd_device``) so it drops
+    straight into ``embeddings.extract_layer_embeddings`` / ``cache_embeddings``.
+    The weights are the SSL_Anti-spoofing checkpoint's wav2vec2 layers (fine-tuned
+    on the binary spoof task), as opposed to the off-the-shelf XLS-R of Regime A.
+    """
+    import torch
+
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    enc = build_model(ckpt_path, device=device).ssl_model.model  # HF Wav2Vec2Model
+    enc = enc.to(device).eval()
+    for p in enc.parameters():
+        p.requires_grad_(False)
+    enc._wfd_device = device
+    return enc

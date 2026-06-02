@@ -11,12 +11,19 @@ data/musan/
 third_party/
 weights/
 
-# Results artifacts (keep dirs via .gitkeep, ignore contents)
+# Results artifacts: commit the small deliverables (figures + summary CSVs),
+# ignore the large/regenerable corpora-derived caches.
 results/figures/*
 !results/figures/.gitkeep
-results/*.csv
+!results/figures/*.png
+results/embeddings/
+results/embeddings_ft/
+results/scores/
+*.npy
+*.npz
 results/*.jsonl
 results/*.pt
+results/*.log
 checkpoints/
 
 # Python
@@ -27,7 +34,6 @@ venv/
 .env
 .ipynb_checkpoints/
 audio_deepfake_robustness_proposal.md
-report.md
 
 # OS
 .DS_Store

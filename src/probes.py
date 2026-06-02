@@ -20,8 +20,7 @@ def _pipeline(C: float, seed: int):
 
     return make_pipeline(
         StandardScaler(),
-        LogisticRegression(max_iter=2000, C=C, random_state=seed,
-                           multi_class="auto"),
+        LogisticRegression(max_iter=2000, C=C, random_state=seed),
     )
 
 
