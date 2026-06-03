@@ -6,6 +6,8 @@ Companion to [report.md](report.md) (findings) and [research-design.md](research
 
 ## The one-sentence frame
 
+Audio deepfake detectors will encounter degraded and unseen audio during deployment. 
+
 A deployed audio-deepfake detector faces two things training never showed it —
 **degraded channels** (Part 1) and **unseen generators** (Part 2). Part 1 measures
 *where* it breaks; Part 2 dissects *why* it fails to generalize.
