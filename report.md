@@ -8,6 +8,11 @@ it: **degraded channels** and **unseen generators**. This report measures both �
 empirically *where* a strong pretrained detector breaks (Part 1), and
 representationally *why* it fails to generalize (Part 2).
 
+> 🚧 **Provisional (work in progress).** Part 1's *absolute* EERs are being re-run
+> after a padding fix — the clean EER below was inflated by a zero- vs. repeat-pad
+> train/test mismatch (the published baseline for this model is 0.82%). The *relative*
+> Part 1 findings and all of Part 2 are unaffected. See the README Status section.
+
 ## TL;DR
 
 - **Clean baseline (full 165,102-trial eval): EER 9.73%, AUC 0.967.**

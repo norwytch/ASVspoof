@@ -45,10 +45,29 @@ correlation test, the pre-registered intervention, and the verified reference
 list — is in **[research-design.md](research-design.md)**. §8 there maps it onto
 this codebase (≈3 new modules: `embeddings.py`, `probes.py`, `experiments/loao.py`).
 
+## Status & caveats (read first)
+
+🚧 **Work in progress**, posted as a portfolio artifact — the framing below is
+deliberate, not hidden. What's solid vs. provisional:
+
+- **Part 1 absolute EERs are provisional.** The clean baseline currently reads 9.73%
+  vs. the **published 0.82%** for this detector on 2021 LA. Traced to a train/test
+  **padding mismatch** (zero- vs. the recipe's repeat-padding); fixed in `src/model.py`,
+  re-run pending. The *relative* findings (noise ≫ compression, the A10 blind spot) are
+  expected to hold; absolute numbers will move. _(Delete this bullet once the re-run lands.)_
+- **Part 2 is unaffected by that bug** (it uses off-the-shelf XLS-R, no 64600-pad) but is
+  **correlational, n = 13 attacks, single corpus.** The H2 effect is robust in *direction*
+  (drop-one ρ ∈ [−0.50, −0.73]) but its p<0.05 leans on A19; cross-dataset validation
+  (ASVspoof 5 / in-the-wild) is the key next step.
+- **Regime A→B is a mechanism case study, not population proof** (cross-regime test null;
+  A10 is a counterexample — see [report.md](report.md) Limitations).
+- **The four detection extensions** (NLP / profiling / reconstruction / prosody) are
+  implemented + unit-tested but **not yet run at scale**.
+
 ## Key Findings
 Full write-up with figures in **[report.md](report.md)**.
 
-- **Clean baseline (full 165k-trial eval): EER 9.73%, AUC 0.967.**
+- **Clean baseline (full 165k-trial eval): EER 9.73%, AUC 0.967** _(provisional — see Status)_.
 - **Noise — not compression — is the failure axis.** MP3 is ~free (EER *drops* to
   8.5% at 32 kbps); additive noise pushes EER to **25.7% at 0 dB**. Streaming needs
   **≥4 s of context** (EER rises to 12.5% by 2 s). Native-codec effect is modest (PSTN worst, 8.2%).
