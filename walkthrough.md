@@ -187,9 +187,11 @@ leaderboard submission.
   embeddings and exposes *non-transfer* (A19, A10) the clean view can't — different
   measurements (catching a *seen* attack vs generalizing to an *unseen* one), not a
   contradiction.
-- **Part 2 numbers predate the parser fix.** Its 8k subset was sampled from the pre-fix
-  pool (~10% `hidden` trials); a clean re-run on the `eval`-only subset is pending, though
-  the H1/H2 mechanism is expected to hold.
+- **Part 2 was re-run on the corrected `eval`-only subset** — H1 falsified / H2 supported
+  both reproduce, and H2 strengthens under mean+std pooling (ρ=−0.75). But on the deployed
+  detector's own AASIST-penultimate representation the non-transfer nearly vanishes (A19 gap
+  +0.13 pp) and the geometry goes non-significant — so it's a frozen-SSL-probe-lens property,
+  not the production model.
 - **The Regime A→B contrast is a case study**, not population proof (the cross-regime
   test is null; A10 is a counter-example).
 - **Mean-pooling** discards temporal structure — a deliberate simplification for a

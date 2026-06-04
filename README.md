@@ -56,11 +56,14 @@ What's solid vs. pending:
   **phase leak** that scored 16,926 `hidden`/`only_speech` trials alongside the official
   `eval` set (fixed in `src/dataset.py`). Either alone leaves EER ~8.5–8.8%; both fixed →
   **0.82%**. The old "A10 blind spot" was an artifact of these bugs (A10 is now 0.55%).
-- **Part 2 was sampled before the parser fix** (its 8k subset includes ~10% `hidden` trials),
-  so its exact figures are **pending a clean re-run**; the mechanism is expected to hold. It is
-  also **correlational, n = 13 attacks, single corpus.** The H2 effect is robust in *direction*
-  (drop-one ρ ∈ [−0.50, −0.73]) but its p<0.05 leans on A19; cross-dataset validation
-  (ASVspoof 5 / in-the-wild) is the key next step.
+- **Part 2 was re-run on the corrected `eval`-only 8k subset** — H1 falsified and H2 supported
+  both reproduce (d-to-bona vs. gap ρ=−0.67, p=0.013), and H2 *strengthens* under mean+std
+  pooling (ρ=−0.75), so it is not a temporal-pooling artifact. **Key caveat:** on the deployed
+  detector's own AASIST-penultimate representation the non-transfer nearly vanishes (A19 gap
+  +0.13 pp) and the geometry correlation goes non-significant — so this is a property of the
+  *frozen-SSL-probe lens*, not the production model (and task-tuning removes it, consistent with
+  Regime A→B). It is also **correlational, n = 13 attacks, single corpus**; the H2 p<0.05 leans
+  on A19, and cross-dataset validation (ASVspoof 5 / in-the-wild) is the key next step.
 - **Regime A→B is a mechanism case study, not population proof** (cross-regime test null;
   A10 is a counterexample — see [report.md](report.md) Limitations).
 - **The four detection extensions** (NLP / profiling / reconstruction / prosody) are

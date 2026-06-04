@@ -12,9 +12,9 @@ representationally *why* it fails to generalize (Part 2).
 > inflated the clean EER to 9.73%: a zero- vs. repeat-pad train/test mismatch, **and**
 > a protocol-parser leak that scored 16,926 `hidden`/`only_speech` trials alongside the
 > official `eval` set. Each alone leaves EER at ~8.5–8.8%; with **both** fixed, clean
-> EER is **0.82%** — matching the published SSL_Anti-spoofing baseline exactly. Part 2's
-> numbers below were computed on a subset drawn *before* the parser fix and are pending a
-> clean re-run (the qualitative conclusions are expected to hold).
+> EER is **0.82%** — matching the published SSL_Anti-spoofing baseline exactly. Part 2 has
+> been **re-run on the corrected `eval`-only subset** (H1 falsified / H2 supported both
+> reproduce; H2 strengthens under mean+std pooling); see its section for the lens caveat.
 
 ## TL;DR
 
