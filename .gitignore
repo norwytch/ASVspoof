@@ -34,6 +34,7 @@ venv/
 .env
 .ipynb_checkpoints/
 audio_deepfake_robustness_proposal.md
+anticipated-questions.md   # private interview prep, not portfolio-facing
 
 # OS
 .DS_Store
