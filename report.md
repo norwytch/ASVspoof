@@ -8,19 +8,24 @@ it: **degraded channels** and **unseen generators**. This report measures both �
 empirically *where* a strong pretrained detector breaks (Part 1), and
 representationally *why* it fails to generalize (Part 2).
 
-> 🚧 **Provisional (work in progress).** Part 1's *absolute* EERs are being re-run
-> after a padding fix — the clean EER below was inflated by a zero- vs. repeat-pad
-> train/test mismatch (the published baseline for this model is 0.82%). The *relative*
-> Part 1 findings and all of Part 2 are unaffected. See the README Status section.
+> ✅ **Part 1 re-run complete (eval-only, repeat-pad).** Two compounding bugs had
+> inflated the clean EER to 9.73%: a zero- vs. repeat-pad train/test mismatch, **and**
+> a protocol-parser leak that scored 16,926 `hidden`/`only_speech` trials alongside the
+> official `eval` set. Each alone leaves EER at ~8.5–8.8%; with **both** fixed, clean
+> EER is **0.82%** — matching the published SSL_Anti-spoofing baseline exactly. Part 2's
+> numbers below were computed on a subset drawn *before* the parser fix and are pending a
+> clean re-run (the qualitative conclusions are expected to hold).
 
 ## TL;DR
 
-- **Clean baseline (full 165,102-trial eval): EER 9.73%, AUC 0.967.**
+- **Clean baseline (full 148,176-trial `eval` set): EER 0.82%, AUC 0.998** — reproduces
+  the published SSL_Anti-spoofing number.
 - **Noise, not compression, is the deployment failure axis.** MP3 is essentially
-  free (even mildly *helpful* down to 32 kbps); additive noise drives EER from
-  9.7% → **25.7% at 0 dB**. Streaming needs **≥4 s of context** (EER rises to 12.5% by 2 s).
-- **A10 (Tacotron2 + WaveRNN) is the standing blind spot:** 27.5% EER even on the
-  clean set while most attacks sit near 1–5%.
+  free (~0.7% across 32–128 kbps); additive noise drives EER from
+  0.82% → **9.8% at 0 dB**. Streaming needs **≥4 s of context** (EER rises to 2.7% by 2 s, 13.8% at 0.5 s).
+- **No seen-attack blind spot.** Every eval attack scores ≤2.6%; the mild standouts are
+  **A18 (2.6%), A19 (1.1%), A17 (1.0%)**. *(The earlier "A10 at 27.5%" was an artifact of
+  the two bugs above; A10 is 0.55% once corrected.)*
 - **Generalization (Part 2):** detectors fail to transfer to specific *unseen*
   generators — **A19 leave-one-attack-out gap +13.9 pp** (EER 3.4% → 17.3%).
 - **H1 falsified, robustly.** Generator identity is near-perfectly linearly
@@ -35,9 +40,10 @@ representationally *why* it fails to generalize (Part 2).
 
 ## Setup
 
-- **Data.** ASVspoof 2021 LA evaluation set; the official CM key gives 165,102
-  scored trials over attacks **A07–A19** (2021 reuses the 2019 eval attacks;
-  label 1 = bona fide).
+- **Data.** ASVspoof 2021 LA evaluation set; the official CM key's **`eval` phase**
+  gives 148,176 scored trials over attacks **A07–A19** (2021 reuses the 2019 eval
+  attacks; label 1 = bona fide). The key's other phases — 16,464 `progress` and 16,926
+  `hidden`/`only_speech` trials — are **not** part of the official EER and are excluded.
 - **Baseline detector.** **SSL_Anti-spoofing** (XLS-R 300M front-end + AASIST
   back-end, Tak et al., Interspeech 2022), loaded **fairseq-free** via an exact
   fairseq→HuggingFace weight remap (`src/ssl_aasist.py`; 0 missing / 0 unexpected
@@ -51,28 +57,35 @@ representationally *why* it fails to generalize (Part 2).
 
 ## Part 1 — Robustness under real-world degradation
 
-**Clean baseline.** EER **9.73%**, AUC **0.967**, normalized min-DCF 0.66 — a
-credible, non-degenerate operating point on the full eval set.
+**Clean baseline.** EER **0.82%**, AUC **0.998**, normalized min-DCF 0.088 — a
+strong, non-degenerate operating point that reproduces the published baseline.
 
 **Degradation sweep** (`src/degradations.py`, batched bf16 scoring):
 
 | Axis | Finding |
 |---|---|
-| **MP3** (8–128 kbps) | Negligible; EER *drops* to **8.5%** at 32 kbps, only rising to 10.0% at 8 kbps. Lossy compression is not the threat. |
-| **Additive noise** (0–30 dB) | The failure axis: 10.2% (30 dB) → 18.0% (10 dB) → **25.7% (0 dB)**, a +16 pp swing; min-DCF saturates to ~1.0 by 10 dB. |
-| **Streaming** (chunked) | 4 s chunks are free (9.76%); EER jumps to **12.5% at 2 s** and min-DCF saturates — the model needs ≥4 s of context. |
-| **Native codec** (LA's own) | Modest: PSTN worst at **8.2%** vs ~6.5–7.0% for a-law/µ-law/Opus/GSM. |
+| **MP3** (8–128 kbps) | Negligible; EER ~**0.7%** across 32–128 kbps (even slightly below clean), 1.3% at 16 kbps, only rising to 4.5% at 8 kbps. Lossy compression is not the threat. |
+| **Additive noise** (0–30 dB) | The failure axis: 0.9% (30 dB) → 2.4% (10 dB) → 4.9% (5 dB) → **9.8% (0 dB)**, a +9 pp swing; min-DCF saturates to ~1.0 at 0 dB. |
+| **Streaming** (chunked) | 4 s chunks are free (0.80%); EER rises to **2.7% at 2 s** and **13.8% at 0.5 s** — the model needs ≥4 s of context. |
+| **Native codec** (LA's own) | Small: every codec <1% — Opus mild-worst at **0.98%**, vs 0.29% uncompressed; a-law/µ-law/PSTN/GSM/G.722 all 0.5–0.8%. |
 
 ![EER vs noise SNR](results/figures/eer_vs_noise.png)
 
-**Per-attack failure analysis (clean).** The detector is near-perfect on several
-attacks (A09, A13 ≈ 0.5%) but has a hard blind spot: **A10 (Tacotron2 + WaveRNN)
-at 27.5%**, with A12 (15%) and A11/A15 (~11.5%) also weak. This is a *seen-attack*
-weakness — A10 is hard even though the model family trained on its category.
+**Per-attack failure analysis (clean).** With the corrected pipeline there is **no
+blind spot**: every eval attack scores ≤2.6%. The mild standouts are **A18 (2.6%),
+A19 (1.1%), A17 (1.0%)** — all neural TTS/VC — while A09/A13 sit ~0.2%. *(The earlier
+"A10 at 27.5%" was an artifact of the padding + phase-leak bugs; A10 is 0.55% once
+corrected.)*
 
 ![Per-attack EER heatmap](results/figures/per_attack_heatmap.png)
 
 ## Part 2 — Why detectors fail to generalize
+
+> ⚠️ **Pending a clean re-run.** The 8k embedding subset below was stratified-sampled
+> from the pre-fix trial pool, so ~800 of its 7,987 trials are `hidden`/`only_speech`.
+> The mechanism (H1 falsified, H2 supported) is expected to be robust to this ~10%
+> perturbation, but the exact figures should be regenerated on the corrected `eval`-only
+> subset before they are treated as final.
 
 Part 1 asks where the *deployed* detector breaks. Part 2 asks a representational
 question on the frozen XLS-R embedding: **what makes a detector fail to transfer
@@ -140,18 +153,24 @@ off the bona-fide manifold — the gap collapsed in step. This is a compelling
   counter-example** — fine-tuning helped it while moving it *toward* bona, because
   A10's failure is the neural-TTS blind spot (a different mechanism), not geometry.
 - **Two different lenses.** Part 1's per-attack EER is the *deployed nonlinear*
-  AASIST detector; Part 2's LOAO uses a *linear* head on mean-pooled frozen
-  embeddings. A10 is hard in both; A19 is easy-when-seen but the worst
-  *non-transfer* — these are not contradictions, they measure different things.
+  AASIST detector (which handles every seen attack ≤2.6%); Part 2's LOAO uses a
+  *linear* head on mean-pooled frozen embeddings and surfaces *non-transfer*
+  weaknesses (A19, A10) that are invisible to the clean per-attack view. These are
+  not contradictions — they measure different things (catching a *seen* attack vs
+  generalizing to an *unseen* one).
 - min-DCF is normalized; Part 2 uses an 8k subset; attacks are eval-only (A07–A19).
 
 ## Reproduce
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-# Part 1
-python -m src.evaluate --full                       # degradation sweep -> results/*_full.csv
-python scripts/make_figures.py results/per_attack_eer_full.csv
+# Part 1  (scores the official `eval` phase only -> clean EER 0.82%)
+python -m src.evaluate --protocol data/asvspoof2021_LA/keys/CM/trial_metadata.txt \
+                       --flac-dir data/asvspoof2021_LA/flac --full \
+                       --out results/results_full.csv \
+                       --per-attack-out results/per_attack_eer_full.csv \
+                       --codec-out results/codec_eer_full.csv
+python -m scripts.make_figures results/per_attack_eer_full.csv
 # Part 2
 python -m scripts.cache_embeddings --subset 8000    # frozen XLS-R embeddings (GPU)
 python -m scripts.loao_per_attack --emb-dir results/embeddings --out results/loao_per_attack.csv

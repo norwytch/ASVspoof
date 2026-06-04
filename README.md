@@ -8,8 +8,8 @@ both — empirically *where* detectors break, and representationally *why* — o
 
 > **Part 1 — Where does it break?** A robustness-evaluation framework measuring
 > detector degradation under compression, telephony, additive noise, and
-> streaming inference, with per-attack failure analysis. *(Run on the full
-> 165k-trial eval set.)*
+> streaming inference, with per-attack failure analysis. *(Run on the official
+> 148k-trial `eval` set.)*
 >
 > **Part 2 — Why does it break?** A falsification-driven representational study of
 > generalization failure: across held-out generators, is leave-one-attack-out
@@ -47,16 +47,18 @@ this codebase (≈3 new modules: `embeddings.py`, `probes.py`, `experiments/loao
 
 ## Status & caveats (read first)
 
-🚧 **Work in progress**, posted as a portfolio artifact — the framing below is
-deliberate, not hidden. What's solid vs. provisional:
+Posted as a portfolio artifact — the framing below is deliberate, not hidden.
+What's solid vs. pending:
 
-- **Part 1 absolute EERs are provisional.** The clean baseline currently reads 9.73%
-  vs. the **published 0.82%** for this detector on 2021 LA. Traced to a train/test
-  **padding mismatch** (zero- vs. the recipe's repeat-padding); fixed in `src/model.py`,
-  re-run pending. The *relative* findings (noise ≫ compression, the A10 blind spot) are
-  expected to hold; absolute numbers will move. _(Delete this bullet once the re-run lands.)_
-- **Part 2 is unaffected by that bug** (it uses off-the-shelf XLS-R, no 64600-pad) but is
-  **correlational, n = 13 attacks, single corpus.** The H2 effect is robust in *direction*
+- **Part 1 absolute EERs now reproduce the published baseline (clean EER 0.82%).** Two
+  compounding bugs had inflated the clean EER to 9.73%: a train/test **padding mismatch**
+  (zero- vs. the recipe's repeat-padding, fixed in `src/model.py`) **and** a protocol-parser
+  **phase leak** that scored 16,926 `hidden`/`only_speech` trials alongside the official
+  `eval` set (fixed in `src/dataset.py`). Either alone leaves EER ~8.5–8.8%; both fixed →
+  **0.82%**. The old "A10 blind spot" was an artifact of these bugs (A10 is now 0.55%).
+- **Part 2 was sampled before the parser fix** (its 8k subset includes ~10% `hidden` trials),
+  so its exact figures are **pending a clean re-run**; the mechanism is expected to hold. It is
+  also **correlational, n = 13 attacks, single corpus.** The H2 effect is robust in *direction*
   (drop-one ρ ∈ [−0.50, −0.73]) but its p<0.05 leans on A19; cross-dataset validation
   (ASVspoof 5 / in-the-wild) is the key next step.
 - **Regime A→B is a mechanism case study, not population proof** (cross-regime test null;
@@ -67,12 +69,13 @@ deliberate, not hidden. What's solid vs. provisional:
 ## Key Findings
 Full write-up with figures in **[report.md](report.md)**.
 
-- **Clean baseline (full 165k-trial eval): EER 9.73%, AUC 0.967** _(provisional — see Status)_.
-- **Noise — not compression — is the failure axis.** MP3 is ~free (EER *drops* to
-  8.5% at 32 kbps); additive noise pushes EER to **25.7% at 0 dB**. Streaming needs
-  **≥4 s of context** (EER rises to 12.5% by 2 s). Native-codec effect is modest (PSTN worst, 8.2%).
-- **A10 (Tacotron2+WaveRNN) is the standing blind spot:** 27.5% EER even on clean
-  audio, while A09/A13 sit near 0.5%.
+- **Clean baseline (official 148k-trial `eval` set): EER 0.82%, AUC 0.998** — reproduces
+  the published SSL_Anti-spoofing number.
+- **Noise — not compression — is the failure axis.** MP3 is ~free (~0.7% across 32–128 kbps);
+  additive noise pushes EER to **9.8% at 0 dB**. Streaming needs **≥4 s of context** (EER rises
+  to 2.7% by 2 s, 13.8% at 0.5 s). Native-codec effect is tiny (all <1%; Opus worst at 0.98%).
+- **No seen-attack blind spot:** every eval attack scores ≤2.6% (mild standouts A18 2.6%,
+  A19 1.1%, A17 1.0%; A09/A13 ~0.2%).
 - **Generalization: H1 falsified, H2 supported.** Generator identity is linearly
   decodable to *ceiling at every one of 25 layers*, so it can't explain
   differential non-transfer; instead **bona-fide proximity predicts the

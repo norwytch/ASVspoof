@@ -9,7 +9,7 @@ eval package) is::
 
 - ``attack_id``  : A07..A19 for spoof, "-" for bona fide
 - ``key``        : "bonafide" | "spoof"
-- ``phase``      : "eval" | "progress" | "hidden_track" (use eval)
+- ``phase``      : "eval" | "progress" | "hidden" (official EER scores "eval" only)
 
 The ASVspoof 2019 LA protocol is shorter::
 
@@ -62,8 +62,11 @@ def parse_protocol(protocol_path: str | Path, flac_dir: str | Path,
             # attack id: A## token, else '-' (bona fide)
             attack_id = next((p for p in parts if _ATTACK_RE.match(p)), "-")
 
-            # phase filter (only if a phase token system is present in the row)
-            row_phase = next((p for p in ("eval", "progress", "hidden_track")
+            # phase filter (only if a phase token system is present in the row).
+            # NB: the 2021 LA key uses the bare token "hidden" (not "hidden_track");
+            # matching the wrong token silently let the 16,926 hidden/only_speech
+            # trials leak into the eval pool, inflating EER (0.82% -> 8.53%).
+            row_phase = next((p for p in ("eval", "progress", "hidden")
                               if p in parts), None)
             if phase is not None and row_phase is not None and row_phase != phase:
                 continue

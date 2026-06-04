@@ -36,25 +36,34 @@ port is faithful — is itself a result.
 ## PART 1 — Robustness: *where* does it break?
 
 ### Step 1 — Parse the protocol
-`src/dataset.py` reads the ASVspoof 2021 LA CM key → **165,102 scored trials**, attacks
-**A07–A19**, label 1 = bona fide. A token-scan parser, so it survives both the 2021
-8-column and 2019 5-column layouts.
+`src/dataset.py` reads the ASVspoof 2021 LA CM key and keeps the official **`eval`
+phase → 148,176 scored trials**, attacks **A07–A19**, label 1 = bona fide. A token-scan
+parser, so it survives both the 2021 8-column and 2019 5-column layouts. *(Scoring the
+`eval` phase only is essential: the key also holds 16,926 `hidden`/`only_speech` and
+16,464 `progress` trials that the official EER excludes — including them inflates EER.)*
 
 ### Step 2 — Clean baseline
 Run the detector on every untouched trial; compute **EER, normalized min-DCF, AUC**.
-→ **EER 9.73%, AUC 0.967.** EER (equal error rate) is the threshold where false-accept
-rate equals false-reject rate — the single number anti-spoofing is judged on.
-Everything downstream is measured *relative* to this credible, non-degenerate point.
+→ **EER 0.82%, AUC 0.998** — reproducing the published SSL_Anti-spoofing baseline. EER
+(equal error rate) is the threshold where false-accept rate equals false-reject rate —
+the single number anti-spoofing is judged on. Everything downstream is measured
+*relative* to this strong, non-degenerate point.
+
+> Two compounding bugs once held this at 9.73%, and both had to be fixed to reach 0.82%:
+> (1) the front-end **zero-padded** short waveforms instead of the recipe's **repeat-pad**
+> (a silence tail this silence-sensitive model never trained on); (2) the parser matched
+> the phase token `"hidden_track"` while the key writes `"hidden"`, so 16,926 trimmed
+> trials **leaked** into the eval pool. Either fix alone leaves EER at ~8.5–8.8%.
 
 ### Step 3 — Degradation sweep (`src/evaluate.py`, batched bf16)
 Each degradation is a function `(waveform, sr) → waveform`; the whole eval set is
 re-scored under each and EER recomputed:
 
-- **MP3** (8–128 kbps, ffmpeg round-trip) → essentially free; EER even *drops* to 8.5% @ 32 kbps.
-- **Additive noise** (0–30 dB SNR) → the failure axis: 10.2% → **25.7% @ 0 dB**.
-- **Streaming** (chunk audio + aggregate scores) → needs ≥4 s of context; 12.5% by 2 s.
+- **MP3** (8–128 kbps, ffmpeg round-trip) → essentially free; EER ~0.7% @ 32–128 kbps, only 4.5% @ 8 kbps.
+- **Additive noise** (0–30 dB SNR) → the failure axis: 0.9% → 2.4% (10 dB) → **9.8% @ 0 dB**.
+- **Streaming** (chunk audio + aggregate scores) → needs ≥4 s of context; 2.7% by 2 s, 13.8% @ 0.5 s.
 - **Native codec** — not synthetic; EER is *stratified* by LA's own transmission codec
-  column (a-law / µ-law / Opus / GSM / PSTN). PSTN worst at 8.2%.
+  column (a-law / µ-law / Opus / GSM / PSTN). All <1%; Opus mild-worst at 0.98%.
 
 *Why:* this is the deployment question — production audio is compressed, noisy,
 band-limited, chunked. The headline ("noise, not compression, breaks it") is
@@ -62,8 +71,9 @@ actionable and non-obvious.
 
 ### Step 4 — Per-attack failure analysis (`results/per_attack_eer_full.csv`)
 Compute EER **per attack type vs the shared bona-fide pool**.
-→ **A10 (Tacotron2+WaveRNN) is a 27.5% blind spot even on clean audio**, while
-A09/A13 sit ~0.5%. A *seen-attack* weakness — a specific generator the model can't catch.
+→ **No blind spot**: every eval attack scores ≤2.6%, with the mild standouts A18 (2.6%),
+A19 (1.1%), A17 (1.0%) and A09/A13 at ~0.2%. *(An earlier run reported "A10 at 27.5%";
+that was an artifact of the padding + phase-leak bugs — A10 is 0.55% once corrected.)*
 
 ### Step 5 — Figures (`scripts/make_figures.py`)
 ROC/DET overlays, EER-vs-{bitrate, SNR, chunk} sweeps, the per-attack heatmap.
@@ -158,10 +168,14 @@ leaderboard submission.
 
 - **n = 13 attacks.** Part 2 correlations are on 13 points — strong-suggestive, not
   definitive; reported with bootstrap CIs and a pre-registered direction.
-- **Two different lenses.** Part 1's per-attack EER is the *nonlinear* AASIST detector;
-  Part 2's LOAO uses a *linear* head on mean-pooled frozen embeddings. A10 is hard in
-  both; A19 is easy-when-seen but the worst *non-transfer* — different measurements, not
-  a contradiction.
+- **Two different lenses.** Part 1's per-attack EER is the *nonlinear* AASIST detector
+  (≤2.6% on every seen attack); Part 2's LOAO uses a *linear* head on mean-pooled frozen
+  embeddings and exposes *non-transfer* (A19, A10) the clean view can't — different
+  measurements (catching a *seen* attack vs generalizing to an *unseen* one), not a
+  contradiction.
+- **Part 2 numbers predate the parser fix.** Its 8k subset was sampled from the pre-fix
+  pool (~10% `hidden` trials); a clean re-run on the `eval`-only subset is pending, though
+  the H1/H2 mechanism is expected to hold.
 - **The Regime A→B contrast is a case study**, not population proof (the cross-regime
   test is null; A10 is a counter-example).
 - **Mean-pooling** discards temporal structure — a deliberate simplification for a
