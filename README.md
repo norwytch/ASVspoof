@@ -1,4 +1,4 @@
-# ASVSpoof2021 Stress-Testing with Degraded Channels and Unseen Generators
+# ASVspoof 2021 Stress-Testing with Degraded Channels and Unseen Generators
 
 A production audio-deepfake detector has to survive two things its training set
 never showed it: **degraded channels** and **unseen attacks**. This repo studies
@@ -36,14 +36,18 @@ ships the frozen-embedding + evaluation infrastructure Part 2 builds on.
   `src/{nlp_features,attack_profiling,reconstruction,prosody}.py`.
 
 ## Part 2 — Why detectors fail to generalize
-The intellectually rigorous arm. Central falsifiable hypothesis: *across held-out
-spoofing families, probe-recoverable generator identity predicts LOAO
-generalization failure; a targeted high-frequency vocoder-artifact band-mask
-improves LOAO EER over a bandwidth-matched control.* Full protocol — leave-one-
-attack-out matrix, shortcut ablations, selectivity-controlled probing, the
-correlation test, the pre-registered intervention, and the verified reference
-list — is in **[research-design.md](research-design.md)**. §8 there maps it onto
-this codebase (≈3 new modules: `embeddings.py`, `probes.py`, `experiments/loao.py`).
+The intellectually rigorous arm — a falsification-driven study. The pre-registered
+hypothesis (**H1**): *across held-out generators, the degree to which a frozen SSL
+embedding linearly encodes generator identity predicts leave-one-attack-out
+non-transfer.* H1 was **falsified** — identity is decodable to ceiling at every layer,
+so its (non-existent) variation can't explain the gap — and a replacement, **H2**
+(*non-transfer tracks proximity to the bona-fide manifold*), was **supported**, with a
+near-causal **Regime A→B encoder contrast** (fine-tuning relocates the worst generator
+and collapses its gap). The full original design — including a pre-registered
+vocoder-artifact **band-mask intervention that was superseded** by the geometry +
+encoder-contrast tests — plus the verified reference list are in
+**[research-design.md](research-design.md)**; §8 maps it onto this codebase
+(`embeddings.py`, `probes.py`, `experiments/loao.py`).
 
 ## Status & caveats (read first)
 
@@ -169,7 +173,7 @@ report.md             written analysis of both parts (~1500 words, with figures)
 research-design.md    Part 2 — the generalization/representational study design + verified refs
 ```
 
-## Status
+## Implementation status
 
 **Part 1 (robustness) and Part 2 (generalization) are both run end-to-end** on the
 real ASVspoof 2021 LA eval set with the SSL_Anti-spoofing detector. The four
