@@ -102,7 +102,7 @@ Large derived artifacts are hosted on Hugging Face rather than committed to git:
 
 | Artifact | Contents | Backs | Repo |
 |---|---|---|---|
-| **XLS-R embeddings cache** | frozen per-layer features (`layer_*.npy`, `utt_ids.npy`, `meta.csv`); Regime A (off-the-shelf) + Regime B (fine-tuned encoder) | Part 2 — LOAO, H1 layer sweep, H2 geometry | [`sempertemper/asvspoof-xlsr-embeddings`](https://huggingface.co/datasets/sempertemper/asvspoof-xlsr-embeddings) *(dataset)* |
+| **XLS-R embeddings cache** | frozen per-layer features (`layer_*.npy`, `utt_ids.npy`, `meta.csv`) on the corrected `eval`-only 8k subset: `embeddings/` (Regime A) + `embeddings_ft/` (Regime B) + `embeddings_meanstd/` (mean+std pooling) + `embeddings_aasist/` (AASIST penultimate) | Part 2 — LOAO, H1 layer sweep, H2 geometry, temporal follow-ups | [`sempertemper/asvspoof-xlsr-embeddings`](https://huggingface.co/datasets/sempertemper/asvspoof-xlsr-embeddings) *(dataset)* |
 | **SSL_Anti-spoofing weights** | `LA_model.pth` (XLS-R 300M + AASIST) | the Part 1/2 baseline detector | [`sempertemper/ssl-antispoofing-weights`](https://huggingface.co/sempertemper/ssl-antispoofing-weights) *(model)* |
 
 Both repos are public; each ships a single tarball — download and extract:
@@ -110,13 +110,13 @@ Both repos are public; each ships a single tarball — download and extract:
 ```bash
 pip install huggingface_hub
 
-# Part 2 embeddings (1.7 GB tar) -> results/embeddings/ (Regime A) + results/embeddings_ft/ (Regime B)
-huggingface-cli download sempertemper/asvspoof-xlsr-embeddings asvspoof_xlsr_embeddings.tar \
+# Part 2 embeddings (3.1 GB tar) -> results/{embeddings,embeddings_ft,embeddings_meanstd,embeddings_aasist}/
+hf download sempertemper/asvspoof-xlsr-embeddings asvspoof_xlsr_embeddings.tar \
     --repo-type dataset --local-dir results/
 tar -xf results/asvspoof_xlsr_embeddings.tar -C results/
 
 # Baseline weights (2.5 GB tar) -> third_party/weights/.../LA_model.pth
-huggingface-cli download sempertemper/ssl-antispoofing-weights ssl_antispoofing_weights.tar \
+hf download sempertemper/ssl-antispoofing-weights ssl_antispoofing_weights.tar \
     --local-dir third_party/weights/
 tar -xf third_party/weights/ssl_antispoofing_weights.tar -C third_party/weights/
 ```
