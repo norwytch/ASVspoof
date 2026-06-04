@@ -99,8 +99,8 @@ For each attack `f` (n=13): train a **linear** head on `{bona + all spoof}` (the
 detector), both evaluated on held-out `f` + a disjoint bona-fide test split. The
 **non-transfer gap = EER_loao − EER_seen** = how much *not having seen f* hurts catching
 f. Averaged over 5 seeds.
-→ Most generators transfer fine (gap ≈ 0); **A19 gap +13.9 pp (3.4% → 17.3%)**,
-A10 +6.3 pp. These two *are* the generalization failure.
+→ Almost every generator transfers fine (gap ≤ 1.7 pp); **A19 gap +14.8 pp
+(1.7% → 16.5%)** is the one sharp failure (next-largest A10 +1.7 pp).
 
 ### Step 8 — H1 test: is it *generator identity*? (`scripts/layer_sweep_selectivity.py`)
 **The pre-registered hypothesis:** generators whose *identity* is more strongly encoded
@@ -110,9 +110,10 @@ control-task selectivity**: a linear probe predicts "is this generator f?"
 balanced-accuracy(shuffled labels)**. The shuffled-label control is the capacity floor —
 it stops you mistaking "the probe is powerful" for "the info is there." Run across **all
 25 layers × 13 attacks × 3 seeds**.
-→ Selectivity is at **ceiling (~0.49 of a 0.5 max) at every layer**, with near-zero
+→ Selectivity is at **ceiling (~0.47–0.50 of a 0.5 max) at every layer**, with near-zero
 variance across generators, and **no layer's selectivity correlates with the gap (all
-p ≥ 0.12)**. **A constant cannot predict a variable → H1 falsified, robustly.**
+p ≥ 0.10; headline ρ = −0.03, p = 0.94)**. **A constant cannot predict a variable → H1
+falsified, robustly.**
 
 > Nuance worth keeping: raw-*accuracy* selectivity first *looked* flat at ~0.12 — that
 > was a class-imbalance artifact. **Balanced** accuracy is the correct metric and reveals
@@ -129,25 +130,38 @@ called bona" proxy. Spearman vs gap (n=13):
 
 | Predictor | ρ | p |
 |---|---|---|
-| cosine distance to bona (closer ⇒ higher gap) | **−0.60** | **0.029** |
-| bona-axis projection (bona-side ⇒ higher gap) | +0.59 | 0.033 |
-| Euclidean distance to bona | −0.54 | 0.055 |
-| isolation among spoofs (nearest other spoof) | +0.03 | 0.91 (null) |
+| Euclidean distance to bona (closer ⇒ higher gap) | **−0.67** | **0.013** |
+| kNN bona fraction (more bona-called ⇒ higher gap) | **+0.68** | **0.010** |
+| cosine distance to bona (closer ⇒ higher gap) | **−0.56** | **0.047** |
+| bona-axis projection (bona-side ⇒ higher gap) | +0.52 | 0.069 |
+| isolation among spoofs (nearest other spoof) | −0.04 | 0.89 (null) |
 
 → **Every bona-proximity measure points the same way; isolation does nothing — exactly
 what the boundary account predicts. H2 supported.** A19 is the exemplar: its centroid
-sits ~3.5× closer to bona than the next-closest generator (~14× the typical), and a kNN
-that never saw it labels **51% of its samples bona fide**.
+sits ~10× closer to bona than the typical generator (cos 0.08), and a kNN that never saw
+it labels **55% of its samples bona fide**.
 
 ### Step 10 — Regime A vs B: the (near-)causal capstone (`scripts/cache_embeddings_ft.py` + `compare_regimes.py`)
 Re-cache embeddings from the **fine-tuned** XLS-R (Regime B) instead of off-the-shelf
 (Regime A), and re-run the study. If geometry is the mechanism, fine-tuning should help
 most for the generators it pushes furthest off the bona-fide manifold.
-→ **A19's gap collapses 13.9 → 4.6 pp** as its cosine distance moves 0.095 → 1.17 (off
-the manifold). A clean mechanism case study.
+→ **A19's gap collapses 14.8 → 1.7 pp** as its cosine distance moves 0.08 → 1.07 (off
+the manifold) and its kNN-bona fraction falls 55% → 1%. A clean mechanism case study.
+
+### Step 11 — Temporal & lens robustness (the follow-ups)
+Two checks an interviewer would push on:
+- **Mean+std pooling** (Option 1): concatenating the per-utterance temporal **std** to the
+  mean (2048-d, parameter-free) does not weaken H2 — it **sharpens** it (d_bona ρ = −0.75,
+  p = 0.003; A19 gap +15.9 pp). So the geometry is not an artifact of discarding temporal
+  structure.
+- **AASIST's own penultimate embedding** (Option 4): probing the *detector's own*
+  time-aware representation (same function class as its deployed `out_layer`), LOAO
+  non-transfer nearly **vanishes** — A19 +0.13 pp, mean 0.04 pp. So the dramatic A19
+  non-transfer is a property of the **frozen-SSL-probe lens**, not the production model,
+  which generalizes to unseen attacks almost perfectly. An honest bound on H2's reach.
 
 > **But stay honest:** the *population-level* cross-regime test
-> `Spearman(Δcos, Δgap)` is **null** (ρ = −0.21, p = 0.49) — most attacks had ~0 gap to
+> `Spearman(Δcos, Δgap)` is **null** (ρ = −0.08, p = 0.79) — most attacks had ~0 gap to
 > move (no dynamic range), and **A10 is a counter-example** (fine-tuning helped it while
 > moving it *toward* bona, because A10's failure is the neural-TTS blind spot — a
 > *different* mechanism). So Regime A→B is a **case study, not population proof**, and

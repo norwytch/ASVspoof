@@ -79,9 +79,12 @@ Full write-up with figures in **[report.md](report.md)**.
 - **Generalization: H1 falsified, H2 supported.** Generator identity is linearly
   decodable to *ceiling at every one of 25 layers*, so it can't explain
   differential non-transfer; instead **bona-fide proximity predicts the
-  leave-one-attack-out gap** (cos-distance vs gap ρ=−0.60, p=0.029). The worst
-  case, **A19 (gap +13.9 pp)**, is the bona-closest generator; fine-tuning the
-  encoder moves it off the bona manifold and **collapses its gap to +4.6 pp**.
+  leave-one-attack-out gap** (d-to-bona vs gap ρ=−0.67, p=0.013). The worst
+  case, **A19 (gap +14.8 pp)**, is the bona-closest generator; fine-tuning the
+  encoder moves it off the bona manifold and **collapses its gap to +1.7 pp**.
+  *(Caveat: on the detector's own AASIST-penultimate representation the gap nearly
+  vanishes — A19 +0.13 pp — so this non-transfer is a frozen-SSL-probe-lens property,
+  not the deployed model; see report.md.)*
 
 ## Setup
 ```bash
