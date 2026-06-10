@@ -1,213 +1,130 @@
 # ASVspoof 2021 Stress-Testing with Degraded Channels and Unseen Generators
 
-A production audio-deepfake detector has to survive two things its training set
-never showed it: **degraded channels** and **unseen attacks**. This repo studies
-both — empirically *where* detectors break, and representationally *why* — on
-**ASVspoof 2021 LA** with the pretrained **SSL_Anti-spoofing** countermeasure
-(XLS-R 300M + AASIST), loaded fairseq-free via an exact weight remap.
+Two questions about a pretrained audio deepfake detector — SSL_Anti-spoofing (wav2vec2
+XLS-R 300M + AASIST) — on ASVspoof 2021 LA:
 
-> **Part 1 — Where does it break?** A robustness-evaluation framework measuring
-> detector degradation under compression, telephony, additive noise, and
-> streaming inference, with per-attack failure analysis. *(Run on the official
-> 148k-trial `eval` set.)*
->
-> **Part 2 — Why does it break?** A falsification-driven representational study of
-> generalization failure: across held-out generators, is leave-one-attack-out
-> non-transfer explained by probe-recoverable *generator identity* (**H1 —
-> falsified**) or by **boundary geometry** / bona-fide proximity (**H2 —
-> supported**)? *(Run; see [report.md](report.md) and
-> [research-design.md](research-design.md).)*
+- **Part 1: where does it break?** EER under real-world audio degradation, with a
+  per-attack breakdown.
+- **Part 2: why does it fail to generalize?** A leave-one-attack-out study on the frozen
+  XLS-R embedding, asking what makes a detector miss an unseen generator.
 
-**The two halves are one story.** Part 1's channel/codec degradation is, in Part 2,
-one of the *shortcut confounds* a generalization claim must survive — the same
-degradation pipeline that quantifies deployment robustness becomes the control
-that separates genuine synthesis artifacts from spurious channel cues. Part 1
-ships the frozen-embedding + evaluation infrastructure Part 2 builds on.
+The detector is loaded fairseq-free via an exact weight remap of the published checkpoint
+(`src/ssl_aasist.py`).
 
-## Part 1 — Robustness under real-world degradation
-- **Baseline:** clean EER / min-DCF / ROC / DET on the ASVspoof 2021 LA eval set.
-- **Degradations** (`src/degradations.py`): MP3 (8–128 kbps), telephony
-  (300–3400 Hz bandpass + G.711 mu-law), additive noise (0–30 dB SNR), and
-  streaming (chunked inference, 500 ms–4 s).
-- **Failure analysis:** per-attack-type EER deltas (attacks A07–A19, grouped by
-  generative mechanism — see [data/attack_taxonomy.json](data/attack_taxonomy.json)).
-- **Extensions:** transcript-conditioned NLP signals, TTS-attack profiling,
-  reconstruction-error detection (AeroBlade analog), prosody — see
-  `src/{nlp_features,attack_profiling,reconstruction,prosody}.py`.
+## Part 1 — Robustness under degradation
 
-## Part 2 — Why detectors fail to generalize
-The intellectually rigorous arm — a falsification-driven study. The pre-registered
-hypothesis (**H1**): *across held-out generators, the degree to which a frozen SSL
-embedding linearly encodes generator identity predicts leave-one-attack-out
-non-transfer.* H1 was **falsified** — identity is decodable to ceiling at every layer,
-so its (non-existent) variation can't explain the gap — and a replacement, **H2**
-(*non-transfer tracks proximity to the bona-fide manifold*), was **supported**, with a
-near-causal **Regime A→B encoder contrast** (fine-tuning relocates the worst generator
-and collapses its gap). The full original design — including a pre-registered
-vocoder-artifact **band-mask intervention that was superseded** by the geometry +
-encoder-contrast tests — plus the verified reference list are in
-**[research-design.md](research-design.md)**; §8 maps it onto this codebase
-(`embeddings.py`, `probes.py`, `experiments/loao.py`).
+Re-scores the eval set under MP3 compression (8–128 kbps), telephony (300–3400 Hz bandpass
++ G.711 mu-law), additive noise (0–30 dB SNR), and chunked/streaming inference, plus a
+per-attack (A07–A19) and native-codec breakdown. Code in `src/degradations.py` and
+`src/evaluate.py`.
 
-## Status & caveats (read first)
+## Part 2 — Why it fails to generalize
 
-Posted as a portfolio artifact — the framing below is deliberate, not hidden.
-What's solid vs. pending:
+A leave-one-attack-out study on the frozen embedding. The pre-registered hypothesis (H1)
+was that how strongly the embedding encodes a generator's identity predicts non-transfer
+to that held-out generator. H1 was falsified: identity is linearly decodable at every
+layer, so it can't explain why only some attacks fail. The replacement (H2) — non-transfer
+tracks how close a generator sits to the bona-fide manifold — held up. Full design,
+controls, and references in [research-design.md](research-design.md).
 
-- **Part 1 absolute EERs now reproduce the published baseline (clean EER 0.82%).** Two
-  compounding bugs had inflated the clean EER to 9.73%: a train/test **padding mismatch**
-  (zero- vs. the recipe's repeat-padding, fixed in `src/model.py`) **and** a protocol-parser
-  **phase leak** that scored 16,926 `hidden`/`only_speech` trials alongside the official
-  `eval` set (fixed in `src/dataset.py`). Either alone leaves EER ~8.5–8.8%; both fixed →
-  **0.82%**. The old "A10 blind spot" was an artifact of these bugs (A10 is now 0.55%).
-- **Part 2 was re-run on the corrected `eval`-only 8k subset** — H1 falsified and H2 supported
-  both reproduce (d-to-bona vs. gap ρ=−0.67, p=0.013), and H2 *strengthens* under mean+std
-  pooling (ρ=−0.75), so it is not a temporal-pooling artifact. **Key caveat:** on the deployed
-  detector's own AASIST-penultimate representation the non-transfer nearly vanishes (A19 gap
-  +0.13 pp) and the geometry correlation goes non-significant — so this is a property of the
-  *frozen-SSL-probe lens*, not the production model (and task-tuning removes it, consistent with
-  Regime A→B). It is also **correlational, n = 13 attacks, single corpus**; the H2 p<0.05 leans
-  on A19, and cross-dataset validation (ASVspoof 5 / in-the-wild) is the key next step.
-- **Regime A→B is a mechanism case study, not population proof** (cross-regime test null;
-  A10 is a counterexample — see [report.md](report.md) Limitations).
-- **The four detection extensions** (NLP / profiling / reconstruction / prosody) are
-  implemented + unit-tested but **not yet run at scale**.
+## Key findings
 
-## Key Findings
-Full write-up with figures in **[report.md](report.md)**.
+- Clean EER 0.82%, AUC 0.998 on the 148,176-trial eval set, matching the published
+  SSL_Anti-spoofing baseline.
+- Noise, not compression, is the failure mode. MP3 is roughly free (~0.7% at 32–128 kbps);
+  additive noise pushes EER to 9.8% at 0 dB. Streaming needs about 4 s of context (2.7% at
+  2 s, 13.8% at 0.5 s). Native codecs are all under 1%.
+- No seen-attack blind spot: every eval attack is at or below 2.6% EER.
+- H1 falsified, H2 supported. Bona-fide proximity predicts the leave-one-attack-out gap
+  (distance-to-bona vs. gap ρ=−0.67, p=0.013). A19, the generator closest to real speech,
+  has the largest gap (+14.8 pp); fine-tuning the encoder moves it off the bona manifold
+  and the gap drops to +1.7 pp.
 
-- **Clean baseline (official 148k-trial `eval` set): EER 0.82%, AUC 0.998** — reproduces
-  the published SSL_Anti-spoofing number.
-- **Noise — not compression — is the failure axis.** MP3 is ~free (~0.7% across 32–128 kbps);
-  additive noise pushes EER to **9.8% at 0 dB**. Streaming needs **≥4 s of context** (EER rises
-  to 2.7% by 2 s, 13.8% at 0.5 s). Native-codec effect is tiny (all <1%; Opus worst at 0.98%).
-- **No seen-attack blind spot:** every eval attack scores ≤2.6% (mild standouts A18 2.6%,
-  A19 1.1%, A17 1.0%; A09/A13 ~0.2%).
-- **Generalization: H1 falsified, H2 supported.** Generator identity is linearly
-  decodable to *ceiling at every one of 25 layers*, so it can't explain
-  differential non-transfer; instead **bona-fide proximity predicts the
-  leave-one-attack-out gap** (d-to-bona vs gap ρ=−0.67, p=0.013). The worst
-  case, **A19 (gap +14.8 pp)**, is the bona-closest generator; fine-tuning the
-  encoder moves it off the bona manifold and **collapses its gap to +1.7 pp**.
-  *(Caveat: on the detector's own AASIST-penultimate representation the gap nearly
-  vanishes — A19 +0.13 pp — so this non-transfer is a frozen-SSL-probe-lens property,
-  not the deployed model; see report.md.)*
+Full write-up and figures in [report.md](report.md).
+
+## Caveats
+
+- An earlier version reported a 9.73% clean EER. That was two bugs: zero-padding instead of
+  the recipe's repeat-padding, and a protocol-parser leak that scored 16,926 out-of-spec
+  trials. Both are fixed; clean EER is now 0.82%. The earlier "A10 blind spot" was an
+  artifact of those bugs (A10 is 0.55% once corrected).
+- Part 2 is correlational, n=13 attacks, one corpus. On the detector's own AASIST
+  representation the gap nearly vanishes (A19 +0.13 pp), so the effect is a property of the
+  frozen-SSL probe rather than the deployed model, and task-tuning removes it. Cross-dataset
+  validation is the main next step.
+- The four detection extensions (NLP, attack profiling, reconstruction, prosody) are
+  implemented and unit-tested but not yet run at scale.
 
 ## Setup
+
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-brew install ffmpeg            # system dependency for MP3 codec
+brew install ffmpeg
 ```
-- Use **Python ≤ 3.12** (the G.711 path uses stdlib `audioop`, removed in 3.13;
-  a numpy fallback exists but the stdlib path is preferred).
-- Download data per [data/README.md](data/README.md).
 
-## Artifacts (Hugging Face)
+Use Python ≤ 3.12 (the G.711 path uses stdlib `audioop`, removed in 3.13). Download data
+per [data/README.md](data/README.md). The proposal's `lab260/AASIST3` checkpoint is
+degenerate across every public mirror (~63% EER), which is why this uses SSL_Anti-spoofing.
 
-Large derived artifacts are hosted on Hugging Face rather than committed to git:
+## Data and artifacts
 
-| Artifact | Contents | Backs | Repo |
-|---|---|---|---|
-| **XLS-R embeddings cache** | frozen per-layer features (`layer_*.npy`, `utt_ids.npy`, `meta.csv`) on the corrected `eval`-only 8k subset: `embeddings/` (Regime A) + `embeddings_ft/` (Regime B) + `embeddings_meanstd/` (mean+std pooling) + `embeddings_aasist/` (AASIST penultimate) | Part 2 — LOAO, H1 layer sweep, H2 geometry, temporal follow-ups | [`sempertemper/asvspoof-xlsr-embeddings`](https://huggingface.co/datasets/sempertemper/asvspoof-xlsr-embeddings) *(dataset)* |
-| **SSL_Anti-spoofing weights** | `LA_model.pth` (XLS-R 300M + AASIST) | the Part 1/2 baseline detector | [`sempertemper/ssl-antispoofing-weights`](https://huggingface.co/sempertemper/ssl-antispoofing-weights) *(model)* |
+The corpus is gitignored. Cached embeddings and the model weights are on Hugging Face:
 
-Both repos are public; each ships a single tarball — download and extract:
+- Embeddings: [`sempertemper/asvspoof-xlsr-embeddings`](https://huggingface.co/datasets/sempertemper/asvspoof-xlsr-embeddings) — one tar with the eval-only caches (`embeddings/`, `embeddings_ft/`, `embeddings_meanstd/`, `embeddings_aasist/`).
+- Weights: [`sempertemper/ssl-antispoofing-weights`](https://huggingface.co/sempertemper/ssl-antispoofing-weights) — `LA_model.pth`.
 
 ```bash
-pip install huggingface_hub
-
-# Part 2 embeddings (3.1 GB tar) -> results/{embeddings,embeddings_ft,embeddings_meanstd,embeddings_aasist}/
-hf download sempertemper/asvspoof-xlsr-embeddings asvspoof_xlsr_embeddings.tar \
-    --repo-type dataset --local-dir results/
+hf download sempertemper/asvspoof-xlsr-embeddings asvspoof_xlsr_embeddings.tar --repo-type dataset --local-dir results/
 tar -xf results/asvspoof_xlsr_embeddings.tar -C results/
-
-# Baseline weights (2.5 GB tar) -> third_party/weights/.../LA_model.pth
-hf download sempertemper/ssl-antispoofing-weights ssl_antispoofing_weights.tar \
-    --local-dir third_party/weights/
+hf download sempertemper/ssl-antispoofing-weights ssl_antispoofing_weights.tar --local-dir third_party/weights/
 tar -xf third_party/weights/ssl_antispoofing_weights.tar -C third_party/weights/
 ```
 
-> After extracting, confirm the layout matches what the code reads —
-> `results/embeddings/` + `results/embeddings_ft/`, and the `LA_model.pth` path in
-> `src/ssl_aasist.py`; adjust the `tar -C` target if the archive nests differently.
-> Both artifacts also regenerate from scratch: weights via the original
-> SSL_Anti-spoofing repo, embeddings via `scripts/cache_embeddings.py` (GPU, ~3 min).
+Both also regenerate from scratch — weights from the original SSL_Anti-spoofing repo,
+embeddings from `scripts/cache_embeddings.py`.
 
 ## Reproduce
-```bash
-python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 
-# Part 1 — full degradation sweep on the eval set (+ figures)
+```bash
+# Part 1 — degradation sweep + figures
 python -m src.evaluate --protocol data/asvspoof2021_LA/keys/CM/trial_metadata.txt \
                        --flac-dir data/asvspoof2021_LA/flac --full
 python scripts/make_figures.py results/per_attack_eer_full.csv
 
-# Part 2 — cache frozen XLS-R embeddings once, then the generalization study
+# Part 2 — cache embeddings, then LOAO / H1 / H2 / Regime B
 python -m scripts.cache_embeddings --subset 8000
 python -m scripts.loao_per_attack --emb-dir results/embeddings --out results/loao_per_attack.csv
-python -m scripts.layer_sweep_selectivity              # H1 (identity-selectivity ceiling)
-python -m scripts.geometry_h2                          # H2 (boundary geometry)
-python -m scripts.cache_embeddings_ft --subset 8000    # Regime B (fine-tuned encoder)
-python -m scripts.compare_regimes
+python -m scripts.layer_sweep_selectivity                       # H1
+python -m scripts.geometry_h2                                   # H2
+python -m scripts.cache_embeddings_ft --subset 8000 && python -m scripts.compare_regimes
 python -m scripts.make_part2_figures
-
-# Extensions (implemented + unit-tested, not yet run at scale):
-#   src/{transcribe,nlp_features,attack_profiling,reconstruction,prosody}.py
 ```
 
-## Results & Discussion
-See **[report.md](report.md)** for the full analysis — clean baseline, the
-degradation sweep, per-attack failure analysis, and the Part 2 generalization
-study (H1 falsified / H2 supported / Regime A↔B) — with embedded figures from
-`results/figures/`.
+## Roadmap
 
-## Repository Layout
+1. Confound controls and layer-robustness. `scripts/confound_controls.py` checks whether
+   H1 and H2 survive the codec and speaker confounds; `geometry_h2.py --layer` checks H2
+   isn't specific to layer 9. Both run on the cached embeddings.
+2. Cross-dataset generalization — the biggest upgrade. The current unseen-generator test is
+   leave-one-out within one 2019-era corpus; re-running it training on 2019/2021 and testing
+   on In-the-Wild and ASVspoof 5 would cover genuinely novel generators and more attacks.
+3. Realistic degradation: MUSAN babble and reverb instead of white noise, and a
+   noise/codec-augmentation baseline to see whether augmenting recovers the lost robustness.
+4. Run the four detection extensions at scale.
+5. Part 2 causality: the pre-registered band-mask intervention, and whether bona-proximity
+   can flag novel-attack risk from embedding geometry before attack samples exist.
+
+## Layout
+
 ```
-src/                  dataset, degradations, metrics, ssl_aasist loader, model wrapper, evaluate, extensions
-experiments/          loao.py — leave-one-attack-out runner
-scripts/              cache_embeddings[_ft], loao_per_attack, layer_sweep_selectivity, geometry_h2, compare_regimes, make_figures
-data/                 download instructions + attack_taxonomy.json (corpora gitignored)
-results/              figures/ + CSVs + cached scores/embeddings (corpora-derived artifacts gitignored)
-report.md             written analysis of both parts (~1500 words, with figures)
-research-design.md    Part 2 — the generalization/representational study design + verified refs
+src/          dataset, degradations, metrics, ssl_aasist loader, model, evaluate, visualize,
+              + embeddings, probes (Part 2), + the four extensions
+experiments/  loao.py — leave-one-attack-out runner
+scripts/      cache_embeddings[_ft], loao_per_attack, layer_sweep_selectivity, geometry_h2,
+              compare_regimes, confound_controls, make_figures
+data/         download instructions + attack_taxonomy.json (corpora gitignored)
+results/      figures + summary CSVs (embeddings/scores gitignored; on Hugging Face)
+report.md            full write-up of both parts, with figures
+research-design.md   Part 2 design + verified references
 ```
-
-## Implementation status
-
-**Part 1 (robustness) and Part 2 (generalization) are both run end-to-end** on the
-real ASVspoof 2021 LA eval set with the SSL_Anti-spoofing detector. The four
-detection **extensions** (NLP / profiling / reconstruction / prosody) are
-implemented and unit-tested but not yet executed at scale.
-
-Core pipeline (executed):
-- `dataset.py` — protocol parser (2021 + 2019 layouts) + stratified subset
-- `degradations.py` — MP3, telephony, noise, streaming (+ numpy mu-law fallback)
-- `ssl_aasist.py` — fairseq-free **SSL_Anti-spoofing** loader (XLS-R + AASIST; exact
-  fairseq→HF remap) and `load_finetuned_encoder()` for Part 2 Regime B
-- `model.py` — `SpoofDetector` wrapper (index 1 = bona fide)
-- `evaluate.py` — full sweep loop (batched bf16), score caching, per-attack +
-  native-codec breakdown
-- `metrics.py` — EER, normalized min-DCF, AUC, per-attack EER, `spearman_with_ci`
-- `visualize.py` / `scripts/make_figures.py` — ROC / DET / EER-sweep / heatmap
-
-Part 2 (executed — see [report.md](report.md)):
-- `embeddings.py` — frozen XLS-R per-layer embedding cache (Regime A & B)
-- `probes.py` — linear probes with control-task **selectivity** (Hewitt & Liang)
-- `experiments/loao.py` + `scripts/loao_per_attack.py` — per-attack non-transfer gap
-- `scripts/layer_sweep_selectivity.py` — the H1 ceiling result (all 25 layers)
-- `scripts/geometry_h2.py` — the H2 boundary-geometry test
-- `scripts/{cache_embeddings_ft,compare_regimes}.py` — Regime B (fine-tuned encoder)
-
-Extensions (implemented, unit-tested, **not yet run at scale**):
-- `transcribe.py` (Whisper→JSONL), `nlp_features.py` (Ext 1), `attack_profiling.py`
-  (Ext 2), `reconstruction.py` (Ext 3), `prosody.py` (Ext 4).
-
-Notes:
-- **Baseline changed from the proposal.** `lab260/AASIST3` (and every public
-  AASIST3 mirror) is degenerate (~63% EER, scores everything bona fide), and the
-  proposal's `ntt-hilab-gensp/ssl_spoof` is gated (HTTP 401) — hence
-  SSL_Anti-spoofing. The H2 *band-mask* intervention in the original design was
-  replaced by the geometry analysis + the Regime A/B encoder contrast.
-- `data/attack_taxonomy.json` is filled from the ASVspoof 2019 database paper
-  (A01–A19); only A07–A19 appear in the eval set.
