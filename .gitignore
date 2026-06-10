@@ -36,6 +36,9 @@ venv/
 audio_deepfake_robustness_proposal.md
 # private interview prep, not portfolio-facing
 anticipated-questions.md
+# internal orientation/handoff docs — kept local only
+CLAUDE.md
+next-session.md
 
 # OS
 .DS_Store
