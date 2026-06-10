@@ -1,5 +1,7 @@
 # ASVspoof 2021 Stress-Testing with Degraded Channels and Unseen Generators
 
+[![tests](https://github.com/norwytch/ASVspoof/actions/workflows/ci.yml/badge.svg)](https://github.com/norwytch/ASVspoof/actions/workflows/ci.yml)
+
 Two questions about a pretrained audio deepfake detector — SSL_Anti-spoofing (wav2vec2
 XLS-R 300M + AASIST) — on ASVspoof 2021 LA:
 

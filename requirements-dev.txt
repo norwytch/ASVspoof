@@ -1,0 +1,12 @@
+# Lightweight deps for the test suite / CI — the dep-free logic only.
+# Deliberately excludes torch / transformers / whisper / parselmouth /
+# sentence-transformers: those are lazily imported and not needed for the tests
+# (model + corpus aren't available in CI).
+numpy
+pandas
+scipy
+scikit-learn
+librosa
+soundfile
+nltk
+pytest

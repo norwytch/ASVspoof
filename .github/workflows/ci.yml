@@ -1,0 +1,29 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"   # <=3.12: the G.711 path uses stdlib audioop (removed in 3.13)
+
+      - name: System deps
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install (light test deps only — no torch/transformers)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: NLTK data (for the prosody stress test)
+        run: python -m nltk.downloader cmudict
+
+      - name: Run tests
+        run: pytest -q
