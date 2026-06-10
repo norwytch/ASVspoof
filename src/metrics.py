@@ -35,7 +35,14 @@ def compute_eer(labels: np.ndarray, scores: np.ndarray) -> tuple[float, float]:
     x0, x1 = diff[i], diff[i + 1]
     alpha = x0 / (x0 - x1) if (x0 - x1) != 0 else 0.0
     eer = float(fpr[i] + alpha * (fpr[i + 1] - fpr[i]))
-    threshold = float(thr[i] + alpha * (thr[i + 1] - thr[i]))
+    # sklearn prepends a non-finite "inf" threshold; interpolating against it -> nan.
+    t0, t1 = thr[i], thr[i + 1]
+    if not np.isfinite(t0):
+        threshold = float(t1)
+    elif not np.isfinite(t1):
+        threshold = float(t0)
+    else:
+        threshold = float(t0 + alpha * (t1 - t0))
     return eer, threshold
 
 
