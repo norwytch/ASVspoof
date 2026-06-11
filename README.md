@@ -29,6 +29,19 @@ layer, so it can't explain why only some attacks fail. The replacement (H2) — 
 tracks how close a generator sits to the bona-fide manifold — held up. Full design,
 controls, and references in [research-design.md](research-design.md).
 
+## Retrieval — search over the embeddings
+
+A nearest-neighbour layer on the same frozen embeddings. `src/retrieval.py` has a
+from-scratch random-hyperplane LSH index (with a brute-force reference and an optional
+FAISS backend) and three heads: a non-parametric k-NN detector, generator attribution by
+neighbour vote, and an open-set novelty score (distance to everything known). The novelty
+score is the retrieval view of Part 2 — a generator near the bona-fide manifold (A19) sits
+close to indexed bona fide, gets a low novelty score, and evades, which is its non-transfer
+made geometric. `scripts/retrieval_eval.py` runs the recall@k / latency benchmark (the
+hand-rolled LSH against FAISS), the k-NN detector EER, attribution accuracy, and per-attack
+open-set novelty. Audio has no lexical channel, so this is dense-only — there's no
+sparse/BM25 side to add.
+
 ## Key findings
 
 - Clean EER 0.82%, AUC 0.998 on the 148,176-trial eval set, matching the published
@@ -101,6 +114,9 @@ python -m scripts.layer_sweep_selectivity                       # H1
 python -m scripts.geometry_h2                                   # H2
 python -m scripts.cache_embeddings_ft --subset 8000 && python -m scripts.compare_regimes
 python -m scripts.make_part2_figures
+
+# Retrieval — ANN benchmark (LSH vs FAISS) + k-NN detector / attribution / open-set novelty
+python -m scripts.retrieval_eval --emb-dir results/embeddings --layer 9
 ```
 
 ## Roadmap
@@ -121,10 +137,11 @@ python -m scripts.make_part2_figures
 
 ```
 src/          dataset, degradations, metrics, ssl_aasist loader, model, evaluate, visualize,
-              + embeddings, probes (Part 2), + the four extensions
+              + embeddings, probes (Part 2), retrieval, + the four extensions
 experiments/  loao.py — leave-one-attack-out runner
 scripts/      cache_embeddings[_ft], loao_per_attack, layer_sweep_selectivity, geometry_h2,
-              compare_regimes, confound_controls, make_figures
+              compare_regimes, confound_controls, retrieval_eval, make_figures
+tests/        pytest suite for the dep-free logic (run in CI)
 data/         download instructions + attack_taxonomy.json (corpora gitignored)
 results/      figures + summary CSVs (embeddings/scores gitignored; on Hugging Face)
 report.md            full write-up of both parts, with figures

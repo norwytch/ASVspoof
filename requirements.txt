@@ -30,6 +30,9 @@ umap-learn
 nltk
 praat-parselmouth    # Praat interface for F0/prosody extraction (imported as `parselmouth`)
 
+# Retrieval (optional)
+faiss-cpu            # production ANN backend for src/retrieval.py; the from-scratch LSH works without it
+
 # Notes:
 # - ffmpeg must be installed as a SYSTEM dependency (brew install ffmpeg) for MP3 codec degradation.
 # - audioop (G.711 mu-law) is stdlib but REMOVED in Python 3.13. Use Python <=3.12,

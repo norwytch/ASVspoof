@@ -10,7 +10,7 @@ import pytest
 
 CORE = ["dataset", "degradations", "metrics", "model", "evaluate", "visualize",
         "transcribe", "nlp_features", "attack_profiling", "reconstruction",
-        "prosody", "probes", "embeddings"]
+        "prosody", "probes", "embeddings", "retrieval"]
 
 
 @pytest.mark.parametrize("mod", CORE)
