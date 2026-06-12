@@ -11,7 +11,9 @@ XLS-R 300M + AASIST) — on ASVspoof 2021 LA:
   XLS-R embedding, asking what makes a detector miss an unseen generator.
 
 The detector is loaded fairseq-free via an exact weight remap of the published checkpoint
-(`src/ssl_aasist.py`).
+(`src/ssl_aasist.py`). Two extensions reuse the same frozen embeddings and detector scores:
+a **retrieval/search** layer over the embeddings and a **conformal coverage** analysis of the
+scores under attack shift (sections below).
 
 ## Part 1 — Robustness under degradation
 
@@ -51,8 +53,11 @@ exchangeability, does to it. `experiments/coverage_loao.py` runs this hold-one-a
 on the cached scores: the within-attack control sits at α for every group, but the
 guarantee breaks on the near-bona generators — A10/A18/A19 miss 18–20% of held-out spoofs
 at α=0.05 (`results/coverage_attack_clean.csv`), exactly where H2 predicted non-transfer.
-The weighted variant (Tibshirani 2019), with weights from the retrieval novelty score, is
-the repair. Runs on the cached scores, no GPU.
+Degradation *reshuffles* which attacks evade (under noise A10's failure vanishes but A18/A17
+blow up). The weighted variant (Tibshirani 2019), with weights from the bona-proximity
+covariate, repairs the voice-conversion failures (A17 back to α) but *backfires* on A10 —
+whose failure isn't geometric — so the repair doubles as a diagnostic separating the two
+mechanisms. Runs on the cached scores, no GPU; full write-up in [report.md](report.md) Part 3.
 
 ## Key findings
 
@@ -63,9 +68,14 @@ the repair. Runs on the cached scores, no GPU.
   2 s, 13.8% at 0.5 s). Native codecs are all under 1%.
 - No seen-attack blind spot: every eval attack is at or below 2.6% EER.
 - H1 falsified, H2 supported. Bona-fide proximity predicts the leave-one-attack-out gap
-  (distance-to-bona vs. gap ρ=−0.67, p=0.013). A19, the generator closest to real speech,
-  has the largest gap (+14.8 pp); fine-tuning the encoder moves it off the bona manifold
-  and the gap drops to +1.7 pp.
+  (distance-to-bona vs. gap ρ=−0.67, p=0.013; negative at all 25 layers, p<0.05 at 19/25).
+  A19, the generator closest to real speech, has the largest gap (+14.8 pp); fine-tuning the
+  encoder moves it off the bona manifold and the gap drops to +1.7 pp.
+- Conformal coverage breaks under attack shift. A spoof-miss guarantee calibrated on seen
+  attacks (α=0.05) holds within-attack (~0.05) but fails on the near-bona generators
+  (A10/A18/A19 miss 18–20%). Degradation reshuffles which attacks evade, and a
+  bona-proximity-weighted repair fixes the voice-conversion failures but backfires on A10 —
+  separating the two failure mechanisms.
 
 Full write-up and figures in [report.md](report.md).
 
@@ -136,9 +146,9 @@ python -m experiments.coverage_loao --scores results/scores/clean.npz --by attac
 
 ## Roadmap
 
-1. Confound controls and layer-robustness. `scripts/confound_controls.py` checks whether
-   H1 and H2 survive the codec and speaker confounds; `geometry_h2.py --layer` checks H2
-   isn't specific to layer 9. Both run on the cached embeddings.
+1. Confound controls. `scripts/confound_controls.py` checks whether H1 and H2 survive the
+   codec and speaker confounds. (Layer-robustness is done — H2 is negative at all 25 layers,
+   p<0.05 at 19/25; see `results/geometry_layer_sweep.csv`.)
 2. Cross-dataset generalization — the biggest upgrade. The current unseen-generator test is
    leave-one-out within one 2019-era corpus; re-running it training on 2019/2021 and testing
    on In-the-Wild and ASVspoof 5 would cover genuinely novel generators and more attacks.
@@ -160,6 +170,7 @@ scripts/      cache_embeddings[_ft], loao_per_attack, layer_sweep_selectivity, g
 tests/        pytest suite for the dep-free logic (run in CI)
 data/         download instructions + attack_taxonomy.json (corpora gitignored)
 results/      figures + summary CSVs (embeddings/scores gitignored; on Hugging Face)
-report.md            full write-up of both parts, with figures
+report.md            full write-up — robustness, generalization, conformal (Parts 1–3), with figures
 research-design.md   Part 2 design + verified references
+SECURITY.md          security policy (defensive research scope + reporting)
 ```
