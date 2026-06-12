@@ -5,8 +5,9 @@ with a falsification-driven study of why detectors fail to generalize.*
 
 A deployed audio-deepfake detector faces two things its training set never showed
 it: **degraded channels** and **unseen generators**. This report measures both —
-empirically *where* a strong pretrained detector breaks (Part 1), and
-representationally *why* it fails to generalize (Part 2).
+empirically *where* a strong pretrained detector breaks (Part 1) and
+representationally *why* it fails to generalize (Part 2) — then asks whether a
+calibrated deployment guarantee survives attack shift (Part 3).
 
 > ✅ **Part 1 re-run complete (eval-only, repeat-pad).** Two compounding bugs had
 > inflated the clean EER to 9.73%: a zero- vs. repeat-pad train/test mismatch, **and**
@@ -40,6 +41,11 @@ representationally *why* it fails to generalize (Part 2).
 - **Fine-tuning the encoder** relocates the worst generator off the bona-fide
   manifold and **collapses its gap (A19 14.8 → 1.7 pp)** — a clean mechanism case
   study (population-level causality remains untested; see Limitations).
+- **Conformal coverage breaks under attack shift (Part 3).** A split-conformal
+  spoof-miss guarantee calibrated on seen attacks (α=0.05) holds within-attack (~0.05)
+  but fails on the near-bona generators (A10/A18/A19 miss 18–20%). Degradation reshuffles
+  *which* attacks evade, and a bona-proximity-weighted repair fixes the voice-conversion
+  failures but backfires on A10 — separating the two failure mechanisms.
 
 ## Setup
 
@@ -131,6 +137,10 @@ nothing**, exactly as the boundary account predicts. **A19 is the exemplar:** it
 centroid sits ~10× closer to bona fide than the typical generator (cosine distance
 **0.08**), and a k-NN that never saw it labels **55% of its samples bona fide**.
 
+This is not a layer-9 artifact. Sweeping all 25 layers, the d_bona↔gap correlation is
+**negative at every layer** (ρ ∈ [−0.73, −0.41]), significant at **19/25**, with the
+reported layer 9 mid-pack — not the strongest (`results/geometry_layer_sweep.csv`).
+
 ![Bona-fide proximity predicts non-transfer](results/figures/geometry_gap_scatter.png)
 
 **Regime B — fine-tuning as a perturbation of the geometry.** Repeating the study
@@ -160,6 +170,53 @@ survives, ρ = +0.56, p = 0.048). So the dramatic A19 non-transfer is substantia
 property of the **frozen-SSL-probe lens**, not the production detector — which
 generalizes to unseen attacks almost perfectly. H2 explains why a *linear probe on
 frozen SSL features* fails to transfer; it is not a claim that the deployed model does.
+
+## Part 3 — Conformal coverage under attack shift
+
+Parts 1–2 ask where and why the detector fails. This arm asks a deployment question on the
+detector's *scores*: split-conformal calibration sets a threshold so that, under
+exchangeability, the **spoof-miss rate** (a spoof accepted as bona fide — the costly error
+in authentication) stays at α. A novel attack is exactly what breaks exchangeability.
+
+**Coverage fails under attack shift, on the near-bona generators.** Calibrating the
+threshold on every attack but one (α=0.05) and measuring the held-out miss rate: a
+within-attack control (calibrate and test on a split of the same attack) sits at ~0.05 for
+every group, but the guarantee breaks on the same generators H2 flagged.
+
+| held-out attack | within-attack control | held-out miss (α=0.05) |
+|---|---|---|
+| A10 | 0.053 | **0.202** |
+| A18 | 0.049 | **0.200** |
+| A19 | 0.046 | **0.179** |
+| A17 | 0.047 | 0.064 |
+| every other attack | ~0.05 | ≤ α |
+
+The control rules out "conformal is just broken" and isolates the failure to attack shift.
+(`experiments/coverage_loao.py`, on the full 148k eval scores.)
+
+**Degradation reshuffles *which* attacks evade.** Sweeping the same hold-one-out coverage
+across the degradation conditions is not monotone — the deployment condition changes the
+identity of the evaders. Under additive noise A10's failure *vanishes* (0.20 → ~0.005 by
+10 dB) while **A18 blows up** (0.20 → 0.41 at 0 dB) and **A17 becomes a new failure**
+(0.06 → 0.30 at 10 dB). MP3 barely moves the pattern, consistent with Part 1. So the
+guarantee doesn't degrade uniformly; the set of attacks that slip past is condition-dependent.
+(`results/coverage_degradation_sweep.csv`.)
+
+**The weighted repair dissociates the two mechanisms.** Covariate-shift weighted conformal
+(Tibshirani et al. 2019), with weights from the bona-proximity covariate (the H2 axis),
+should repair a failure that is genuinely a covariate shift — and it does, but only for the
+right attacks. The three voice-conversion attacks sit close to bona (cosine distance to the
+bona centroid 0.03–0.04 vs ~0.06–0.09 typical), and reweighting repairs them: **A17 returns
+to α** (0.060 → 0.043), A19 and A18 improve (0.180 → 0.165, 0.207 → 0.197). But **A10 sits
+*far* from bona (0.086)** — its failure is not geometric (it is the neural-TTS weakness, the
+Regime-B counter-example) — so the geometric covariate mis-models it and pushes the threshold
+the wrong way: **A10 gets worse** (0.194 → 0.241). Net mean |miss − α| is unchanged
+(0.061 → 0.062), insensitive to weight-clipping. The repair is therefore not a blanket fix
+but a **diagnostic** that separates the VC bona-proximity failures (repairable) from the A10
+neural-TTS blind spot (not) — a third independent line of evidence for H2 and the A10
+counter-example. A residual *support* shift remains even for the VC attacks (their
+high-score/bona-close region is sparsely populated by seen spoofs), so the repair is partial.
+(On the 8k subset where embeddings and scores align.)
 
 ## Limitations (read these)
 
@@ -203,4 +260,6 @@ python -m scripts.make_part2_figures
 python -m scripts.cache_embeddings --subset 8000 --pool meanstd --out-dir results/embeddings_meanstd      # Opt 1: mean+std
 python -m scripts.cache_aasist_embeddings --subset 8000 --out-dir results/embeddings_aasist               # Opt 4: AASIST penultimate
 # (each followed by loao_per_attack + geometry_h2 on its --emb-dir; Opt 4 uses --layer 0)
+# Part 3 — conformal coverage under attack shift (CPU, on cached scores; no GPU)
+python -m experiments.coverage_loao --scores results/scores/clean.npz --by attack
 ```
