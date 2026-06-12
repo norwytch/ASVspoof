@@ -42,6 +42,18 @@ hand-rolled LSH against FAISS), the k-NN detector EER, attribution accuracy, and
 open-set novelty. Audio has no lexical channel, so this is dense-only — there's no
 sparse/BM25 side to add.
 
+## Conformal coverage under attack shift
+
+A split-conformal layer on the deployed detector's scores. `src/conformal.py` calibrates a
+spoof-miss threshold on seen attacks so that, under exchangeability, the miss rate (a spoof
+accepted as bona fide) stays at α — then asks what a novel attack, which breaks
+exchangeability, does to it. `experiments/coverage_loao.py` runs this hold-one-attack-out
+on the cached scores: the within-attack control sits at α for every group, but the
+guarantee breaks on the near-bona generators — A10/A18/A19 miss 18–20% of held-out spoofs
+at α=0.05 (`results/coverage_attack_clean.csv`), exactly where H2 predicted non-transfer.
+The weighted variant (Tibshirani 2019), with weights from the retrieval novelty score, is
+the repair. Runs on the cached scores, no GPU.
+
 ## Key findings
 
 - Clean EER 0.82%, AUC 0.998 on the 148,176-trial eval set, matching the published
@@ -117,6 +129,9 @@ python -m scripts.make_part2_figures
 
 # Retrieval — ANN benchmark (LSH vs FAISS) + k-NN detector / attribution / open-set novelty
 python -m scripts.retrieval_eval --emb-dir results/embeddings --layer 9
+
+# Conformal coverage under attack shift (CPU, on cached scores)
+python -m experiments.coverage_loao --scores results/scores/clean.npz --by attack
 ```
 
 ## Roadmap
@@ -137,8 +152,9 @@ python -m scripts.retrieval_eval --emb-dir results/embeddings --layer 9
 
 ```
 src/          dataset, degradations, metrics, ssl_aasist loader, model, evaluate, visualize,
-              + embeddings, probes (Part 2), retrieval, + the four extensions
-experiments/  loao.py — leave-one-attack-out runner
+              + embeddings, probes, retrieval, conformal, hooks (Part 2 + extensions),
+              + the four detection extensions
+experiments/  loao.py (leave-one-attack-out), coverage_loao.py (conformal coverage)
 scripts/      cache_embeddings[_ft], loao_per_attack, layer_sweep_selectivity, geometry_h2,
               compare_regimes, confound_controls, retrieval_eval, make_figures
 tests/        pytest suite for the dep-free logic (run in CI)

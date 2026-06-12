@@ -16,11 +16,11 @@ weights/
 results/figures/*
 !results/figures/.gitkeep
 !results/figures/*.png
-results/embeddings/
-results/embeddings_ft/
+results/embeddings*/
 results/scores/
 *.npy
 *.npz
+*.tar
 results/*.jsonl
 results/*.pt
 results/*.log
@@ -39,6 +39,8 @@ anticipated-questions.md
 # internal orientation/handoff docs — kept local only
 CLAUDE.md
 next-session.md
+handoff.md
+files.zip
 
 # OS
 .DS_Store
