@@ -17,8 +17,7 @@ scores under attack shift (sections below).
 
 ## Part 1 — Robustness under degradation
 
-Re-scores the eval set under MP3 compression (8–128 kbps), telephony (300–3400 Hz bandpass
-+ G.711 mu-law), additive noise (0–30 dB SNR), and chunked/streaming inference, plus a
+Re-scores the eval set under MP3 compression (8–128 kbps), telephony (300–3400 Hz bandpass, G.711 mu-law), additive noise (0–30 dB SNR), and chunked/streaming inference, plus a
 per-attack (A07–A19) and native-codec breakdown. Code in `src/degradations.py` and
 `src/evaluate.py`.
 
@@ -41,22 +40,20 @@ score is the retrieval view of Part 2 — a generator near the bona-fide manifol
 close to indexed bona fide, gets a low novelty score, and evades, which is its non-transfer
 made geometric. `scripts/retrieval_eval.py` runs the recall@k / latency benchmark (the
 hand-rolled LSH against FAISS), the k-NN detector EER, attribution accuracy, and per-attack
-open-set novelty. Audio has no lexical channel, so this is dense-only — there's no
-sparse/BM25 side to add.
+open-set novelty. Audio has no lexical channel, so this is dense-only.
 
 ## Conformal coverage under attack shift
 
 A split-conformal layer on the deployed detector's scores. `src/conformal.py` calibrates a
 spoof-miss threshold on seen attacks so that, under exchangeability, the miss rate (a spoof
-accepted as bona fide) stays at α — then asks what a novel attack, which breaks
+accepted as bona fide) stays at α, then asks what a novel attack, which breaks
 exchangeability, does to it. `experiments/coverage_loao.py` runs this hold-one-attack-out
 on the cached scores: the within-attack control sits at α for every group, but the
-guarantee breaks on the near-bona generators — A10/A18/A19 miss 18–20% of held-out spoofs
+guarantee breaks on the near-bona generators: A10/A18/A19 miss 18–20% of held-out spoofs
 at α=0.05 (`results/coverage_attack_clean.csv`), exactly where H2 predicted non-transfer.
 Degradation *reshuffles* which attacks evade (under noise A10's failure vanishes but A18/A17
 blow up). The weighted variant (Tibshirani 2019), with weights from the bona-proximity
-covariate, repairs the voice-conversion failures (A17 back to α) but *backfires* on A10 —
-whose failure isn't geometric — so the repair doubles as a diagnostic separating the two
+covariate, repairs the voice-conversion failures (A17 back to α) but *backfires* on A10 (whose failure isn't geometric) so the repair doubles as a diagnostic separating the two
 mechanisms. Runs on the cached scores, no GPU; full write-up in [report.md](report.md) Part 3.
 
 ## Key findings
