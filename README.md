@@ -36,11 +36,13 @@ A nearest-neighbour layer on the same frozen embeddings. `src/retrieval.py` has 
 from-scratch random-hyperplane LSH index (with a brute-force reference and an optional
 FAISS backend) and three heads: a non-parametric k-NN detector, generator attribution by
 neighbour vote, and an open-set novelty score (distance to everything known). The novelty
-score is the retrieval view of Part 2 — a generator near the bona-fide manifold (A19) sits
-close to indexed bona fide, gets a low novelty score, and evades, which is its non-transfer
-made geometric. `scripts/retrieval_eval.py` runs the recall@k / latency benchmark (the
-hand-rolled LSH against FAISS), the k-NN detector EER, attribution accuracy, and per-attack
-open-set novelty. Audio has no lexical channel, so this is dense-only.
+score is the retrieval view of Part 2: a generator near the bona-fide manifold (A19) should
+sit close to indexed bona fide, get a low novelty score, and evade. `scripts/retrieval_eval.py`
+runs the recall@k / latency benchmark (the hand-rolled LSH against FAISS), the k-NN detector
+EER, attribution accuracy, and per-attack open-set novelty. Audio has no lexical channel, so
+this is dense-only. This layer is implemented and unit-tested but not yet run on the real
+embeddings; the A19 behaviour described here is the prediction from Part 2's geometry, not a
+measured retrieval result.
 
 ## Conformal coverage under attack shift
 
@@ -86,8 +88,10 @@ Full write-up and figures in [report.md](report.md).
   representation the gap nearly vanishes (A19 +0.13 pp), so the effect is a property of the
   frozen-SSL probe rather than the deployed model, and task-tuning removes it. Cross-dataset
   validation is the main next step.
-- The four detection extensions (NLP, attack profiling, reconstruction, prosody) are
-  implemented and unit-tested but not yet run at scale.
+- The retrieval/search layer, the four detection extensions (NLP, attack profiling,
+  reconstruction, prosody), and the mechanistic-interpretability hooks (`src/hooks.py`,
+  written but not yet executed) are implemented and unit-tested but not yet run on real data
+  at scale. Nothing above depends on them.
 
 ## Setup
 

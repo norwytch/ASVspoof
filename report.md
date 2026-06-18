@@ -95,7 +95,7 @@ reported result rests on synthetic data.
 - Metrics. Interpolated EER, normalized min-DCF, AUC, per-attack EER. Score
   convention throughout: higher = more bona fide.
 - Scale. Part 1 runs the full eval set. Part 2's representational study runs on a
-  stratified 7,987-utterance subset (812 bona fide / 7,175 spoof), with frozen per-layer
+  stratified 7,988-utterance subset (799 bona fide / 7,189 spoof), with frozen per-layer
   XLS-R embeddings cached once.
 
 ## Part 1 — Robustness under real-world degradation

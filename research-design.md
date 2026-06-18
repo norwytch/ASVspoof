@@ -116,7 +116,9 @@ Every ingredient already exists; the novelty is the predictive integration, not 
 
 ## 6. Implementation status
 
-This design is implemented in the repository. The frozen embedding cache, leave-one-attack-out splits, linear probes with control-task selectivity, and the shortcut and confound ablations are all built and run; results are in [report.md](report.md). The degradation pipeline of §3.3 also serves as Part 1's robustness study.
+This design is implemented in the repository. The leave-one-attack-out transfer study, the generator-identity probing (the H1 selectivity test), and the boundary-geometry analysis (H2) were all run on real ASVspoof embeddings; those results are in [report.md](report.md). The degradation pipeline of §3.3 also serves as Part 1's robustness study.
+
+The one part of §3.4 not yet run on real data is the confound controls (codec/speaker), which await the protocol metadata key.
 
 report.md also goes beyond this design. Its boundary-geometry and conformal-coverage analyses became the causal and predictive handle the study delivers: they localize non-transfer to bona-fide proximity, and show where a calibrated coverage guarantee breaks under attack shift.
 

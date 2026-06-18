@@ -26,6 +26,12 @@ results/*.pt
 results/*.log
 checkpoints/
 
+# stale pre-fix subset CSVs, superseded by the *_full versions; kept local only
+results/results.csv
+results/per_attack_eer.csv
+results/codec_eer.csv
+results/loao.csv
+
 # Python
 __pycache__/
 *.py[cod]
