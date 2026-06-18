@@ -36,6 +36,8 @@ venv/
 audio_deepfake_robustness_proposal.md
 # private interview prep, not portfolio-facing
 anticipated-questions.md
+# redundant with report.md + contains interview-prep asides; kept local only
+walkthrough.md
 # internal orientation/handoff docs — kept local only
 CLAUDE.md
 next-session.md

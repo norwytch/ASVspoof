@@ -155,7 +155,7 @@ python -m experiments.coverage_loao --scores results/scores/clean.npz --by attac
 3. Realistic degradation: MUSAN babble and reverb instead of white noise, and a
    noise/codec-augmentation baseline to see whether augmenting recovers the lost robustness.
 4. Run the four detection extensions at scale.
-5. Part 2 causality: the pre-registered band-mask intervention, and whether bona-proximity
+5. Part 2 causality: a targeted band-mask causal test, and whether bona-proximity
    can flag novel-attack risk from embedding geometry before attack samples exist.
 
 ## Layout
